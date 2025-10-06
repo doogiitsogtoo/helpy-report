@@ -1,0 +1,23 @@
+{
+  "name": "newautomatereport",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "run-once": "node index.js --once",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "dayjs": "^1.11.18",
+    "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.6",
+    "puppeteer": "^24.22.3",
+    "xlsx": "^0.18.5"
+  }
+}

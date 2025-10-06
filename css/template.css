@@ -1,0 +1,271 @@
+@page {
+  size: A4 landscape;
+  margin: 16mm 14mm;
+}
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #222;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.header {
+  margin-bottom: 12px;
+}
+h1 {
+  font-size: 18px;
+  margin: 0 0 6px 0;
+}
+h2 {
+  font-size: 16px;
+  margin: 20px 0 8px 0;
+  page-break-after: avoid;
+}
+.sheet {
+  break-inside: avoid;
+  margin-bottom: 12px;
+}
+.table-wrap {
+  overflow: auto;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+th {
+  background: #f7f7f7;
+  font-weight: 600;
+}
+.caption {
+  color: #666;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.footer {
+  margin-top: 16px;
+  color: #777;
+  font-size: 11px;
+}
+
+.grid.grid-2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+}
+
+.card-title {
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff6a6a, #ffa46a);
+}
+.legend {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: #999;
+}
+.dot-total {
+  background: #00e6b8;
+}
+.dot-ans {
+  background: #f7b733;
+}
+.dot-ivr {
+  background: #ff6b81;
+}
+.dot-line {
+  background: #3b82f6;
+  border-radius: 2px;
+  width: 18px;
+  height: 3px;
+  align-self: center;
+}
+table.cmp {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.cmp th,
+table.cmp td {
+  border: 1px solid #e5e5e5;
+  padding: 8px;
+}
+table.cmp thead th {
+  background: #ffe9e1;
+}
+td.up {
+  color: #0a8f3c;
+  font-weight: 600;
+}
+td.down {
+  color: #d14242;
+  font-weight: 600;
+}
+
+/* Section header */
+.kpi-note {
+  margin: 8px 2px 2px;
+  color: #444;
+}
+.kpi-note .up {
+  color: #0a8f3c;
+  font-weight: 600;
+}
+.kpi-note .down {
+  color: #d14242;
+  font-weight: 600;
+}
+
+/* Cards container */
+.channel-cards .card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 16px;
+}
+.mini-card {
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+.mini-title {
+  display: inline-block;
+  color: #eef;
+  text-decoration: underline;
+  margin-bottom: 6px;
+}
+.mini-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.mini-sub {
+  font-size: 12px;
+  opacity: 0.95;
+  margin-top: 2px;
+}
+.mini-delta {
+  margin-top: 6px;
+  font-weight: 700;
+}
+.mini-delta.up {
+  color: #c8ffd1;
+}
+.mini-delta.down {
+  color: #ffd1d1;
+}
+
+/* Хэвлэхэд мөр таслахгүй байхаар */
+.channel-cards .mini-grid {
+  break-inside: avoid;
+}
+
+.ost .card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+} /* grid/картууд аль хэдийн байвал давхардахгүй */
+
+.fb-wrap {
+  margin-top: 18px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fb-head {
+  margin: 0;
+  padding: 8px 12px;
+  background: #1e40af;
+  color: #fff;
+}
+.fb-company {
+  padding: 10px 12px;
+  border: 1px solid #e5e5e5;
+  border-top: none;
+}
+.fb-company .fb-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.fb-company ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.fb-company li {
+  margin: 2px 0;
+}
+.fb-company .count {
+  color: #666;
+  font-size: 12px;
+}
+
+.ost-top .card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card.soft {
+  padding: 12px;
+}
+.chart-wrap {
+  break-inside: avoid;
+}
+.cmp {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cmp th,
+.cmp td {
+  border: 1px solid #e5e5e5;
+  padding: 8px;
+  vertical-align: top;
+}
+.cmp thead th {
+  background: #ffe9e1;
+}
+.cmp .num {
+  text-align: right;
+}
+.up {
+  color: #0a8f3c;
+  font-weight: 600;
+}
+.down {
+  color: #d14242;
+  font-weight: 600;
+}
+
+.social .card-title {
+  background: linear-gradient(135deg, #ff6a6a, #ffa46a);
+  color: #fff;
+}
+
+.spacer16 {
+  height: 16px;
+}
