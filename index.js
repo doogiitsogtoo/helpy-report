@@ -1526,7 +1526,6 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
 
   // 4) TOP-5 буцаана
   items.sort((a, b) => b.value - a.value);
-  console.log("[TOP5] Extracted items =", items);
   return items.slice(0, 5);
 }
 function renderTop5Chart(top5) {

@@ -2,22 +2,27 @@
   "name": "newautomatereport",
   "version": "1.0.0",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "run-once": "node index.js --once",
-    "start": "node index.js"
+    "start": "node index.js",
+    "ardapp:once": "node ard-app.js --once",
+    "ardapp": "node ard-app.js",
+    "ardcredit:once": "node ard-credit.js --once",
+    "ardcredit": "node ard-credit.js",
+    "ardbit:once": "node ard-bit.js --once",
+    "ardbit": "node ard-bit.js",
+    "ard-security:once": "node ard-security.js --once",
+    "ardsecurity": "node ard-security.js",
+    "run-all-once": "npm run -s run-once && npm run -s ardapp:once && npm run -s ardcredit:once"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "type": "module",
   "dependencies": {
     "dayjs": "^1.11.18",
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
-    "puppeteer": "^24.22.3",
+    "puppeteer": "^24.23.0",
     "xlsx": "^0.18.5"
   }
 }
