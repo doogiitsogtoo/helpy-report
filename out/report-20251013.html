@@ -1,0 +1,619 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 16mm 14mm;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      color: #222;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .header {
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 6px 0;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin: 20px 0 8px 0;
+      page-break-after: avoid;
+    }
+
+    .sheet {
+      break-inside: avoid;
+      margin-bottom: 12px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid #eaeaea;
+      border-radius: 8px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border: 1px solid #ddd;
+      padding: 6px 8px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f7f7f7;
+      font-weight: 600;
+    }
+
+    .caption {
+      color: #666;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .footer {
+      margin-top: 16px;
+      color: #777;
+      font-size: 11px;
+    }
+
+    .grid.grid-2 {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 16px;
+    }
+
+    .card-title {
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #ff6a6a, #ffa46a);
+    }
+
+    .legend {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #666;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: #999;
+    }
+
+    .dot-total {
+      background: #00e6b8;
+    }
+
+    .dot-ans {
+      background: #f7b733;
+    }
+
+    .dot-ivr {
+      background: #ff6b81;
+    }
+
+    .dot-line {
+      background: #3b82f6;
+      border-radius: 2px;
+      width: 18px;
+      height: 3px;
+      align-self: center;
+    }
+
+    table.cmp {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.cmp th,
+    table.cmp td {
+      border: 1px solid #e5e5e5;
+      padding: 8px;
+    }
+
+    table.cmp thead th {
+      background: #ffe9e1;
+    }
+
+    td.up {
+      color: #0a8f3c;
+      font-weight: 600;
+    }
+
+    td.down {
+      color: #d14242;
+      font-weight: 600;
+    }
+
+    /* Section header */
+    .kpi-note {
+      margin: 8px 2px 2px;
+      color: #444;
+    }
+
+    .kpi-note .up {
+      color: #0a8f3c;
+      font-weight: 600;
+    }
+
+    .kpi-note .down {
+      color: #d14242;
+      font-weight: 600;
+    }
+
+    /* Cards container */
+    .channel-cards .card {
+      border: 1px solid #eee;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(140px, 1fr));
+      gap: 16px;
+    }
+
+    .mini-card {
+      border-radius: 12px;
+      padding: 16px;
+      background: var(--grad);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+    }
+
+    .mini-title {
+      display: inline-block;
+      color: #eef;
+      text-decoration: underline;
+      margin-bottom: 6px;
+    }
+
+    .mini-value {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .mini-sub {
+      font-size: 12px;
+      opacity: 0.95;
+      margin-top: 2px;
+    }
+
+    .mini-delta {
+      margin-top: 6px;
+      font-weight: 700;
+    }
+
+    .mini-delta.up {
+      color: #c8ffd1;
+    }
+
+    .mini-delta.down {
+      color: #ffd1d1;
+    }
+
+    /* Хэвлэхэд мөр таслахгүй байхаар */
+    .channel-cards .mini-grid {
+      break-inside: avoid;
+    }
+
+    .ost .card {
+      border: 1px solid #eee;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    /* grid/картууд аль хэдийн байвал давхардахгүй */
+
+    .fb-wrap {
+      margin-top: 18px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .fb-head {
+      margin: 0;
+      padding: 8px 12px;
+      background: #1e40af;
+      color: #fff;
+    }
+
+    .fb-company {
+      padding: 10px 12px;
+      border: 1px solid #e5e5e5;
+      border-top: none;
+    }
+
+    .fb-company .fb-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .fb-company ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .fb-company li {
+      margin: 2px 0;
+    }
+
+    .fb-company .count {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .ost-top .card {
+      border: 1px solid #eee;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .card.soft {
+      padding: 12px;
+    }
+
+    .chart-wrap {
+      break-inside: avoid;
+    }
+
+    .cmp {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .cmp th,
+    .cmp td {
+      border: 1px solid #e5e5e5;
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    .cmp thead th {
+      background: #ffe9e1;
+    }
+
+    .cmp .num {
+      text-align: right;
+    }
+
+    .up {
+      color: #0a8f3c;
+      font-weight: 600;
+    }
+
+    .down {
+      color: #d14242;
+      font-weight: 600;
+    }
+
+    .social .card-title {
+      background: linear-gradient(135deg, #ff6a6a, #ffa46a);
+      color: #fff;
+    }
+
+    .spacer16 {
+      height: 16px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <section class="hero" style="margin-bottom:16px">
+    <div
+      style="background:linear-gradient(135deg,#ef4444,#f97316);border-radius:12px;padding:28px;display:flex;justify-content:space-between;align-items:center;min-height:220px;">
+      <div style="background:#fff;border-radius:16px;padding:20px 24px;display:inline-block">
+        <div style="font-weight:700;font-size:28px;letter-spacing:.5px;color:#ef4444">ARD</div>
+        <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
+      </div>
+      <div style="color:#fff;text-align:right;padding:8px 16px">
+        <div style="font-size:36px;font-weight:800;line-height:1.1">Ард Актив</div>
+        <div style="opacity:.9;margin-top:8px">5 сар – 8 сар (2025)</div>
+      </div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн 4 сараар/</div>
+    <canvas id="assLine" height="200"
+      style="height: 500px !important; display: flex; align-items: center; justify-content: center; margin:4rem 0;"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script>(function () {
+
+        const dataLabel = {
+          id: 'dataLabel', afterDatasetsDraw(chart) {
+            const { ctx, data: { datasets }, scales: { x, y } } = chart;
+            ctx.save(); ctx.font = '12px system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.fillStyle = '#111';
+            (datasets[0].data || []).forEach((v, i) => {
+              const xp = x.getPixelForValue(i), yp = y.getPixelForValue(v);
+              ctx.fillText(String(v), xp + 6, yp - 6);
+            });
+            ctx.restore();
+          }
+        };
+
+        const ctx = document.getElementById('assLine').getContext('2d');
+        new Chart(ctx, {
+          type: 'line',
+          data: { labels: ["5 сар", "6 сар", "7 сар", "8 сар"], datasets: [{ label: '', data: [486, 611, 303, 110], tension: .3, pointRadius: 4 }] },
+          options: { animation: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+          plugins: [dataLabel]
+        });
+      })();</script>
+  </section>
+  <section class="card">
+    <div class="grid grid-2">
+      <div>
+        <div class="card-title">БҮРТГЭЛ /Ангиллаар/</div>
+        <canvas id="byCategory" style="margin:4rem 0; height: 500px;"></canvas>
+      </div>
+      <div>
+        <ul style="margin-top:34px;line-height:1.6">
+          <li>Сүүлчийн 7 хоногт нийт <b>89</b> (79% лавлагаа, 18% үйлчилгээ, 3% гомдол).</li>
+          <li>Өмнөх 7 хоногоос буурсан: <b>3%</b>.</li>
+        </ul>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script>(function () {
+
+        const dataLabel = {
+          id: 'dataLabel', afterDatasetsDraw(chart) {
+            const { ctx, data: { datasets }, scales: { x, y } } = chart;
+            ctx.save();
+            ctx.font = '12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+            datasets.forEach((ds, di) => {
+              (ds.data || []).forEach((v, i) => {
+                if (v == null) return;
+                const meta = chart.getDatasetMeta(di);
+                const pt = meta.data[i];
+                const xPos = pt.x, yPos = pt.y - 4;
+                ctx.fillStyle = '#111';
+                ctx.fillText(String(v), xPos, yPos);
+              });
+            });
+            ctx.restore();
+          }
+        };
+        const ctx = document.getElementById('byCategory').getContext('2d');
+        new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ["07.14-07.20", "07.21-07.27", "07.28-08.03", "08.04-08.10"],
+            datasets: [
+              { label: 'Лавлагаа', data: [29, 89, 69, 70] },
+              { label: 'Үйлчилгээ', data: [2, 15, 16, 16] },
+              { label: 'Гомдол', data: [2, 4, 7, 3] }
+            ]
+          },
+          options: {
+            animation: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true } }
+          },
+          plugins: [dataLabel]
+        });
+      })();</script>
+  </section>
+  <section class="company-top10">
+    <div class="card">
+      <div class="card-title">БҮРТГЭЛ / Ангилал тус бүрээр / — Ард Актив</div>
+      <p class="kpi-note">Харьцуулалт: <b>07.28-08.03</b> ↔ <b>08.04-08.10</b>.</p>
+    </div>
+
+    <div class="card soft">
+      <div class="card-title">ТОП ЛАВЛАГАА / туслах ангилалаар /</div>
+      <div class="tables">
+        <div class="card soft">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Туслах ангилал</th>
+                <th>07.28-08.03</th>
+                <th>08.04-08.10</th>
+                <th>Өөрчлөлт</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <tr>
+                <td>Хугацаат хадгаламж цуцлах заавар</td>
+                <td class="num">9</td>
+                <td class="num">12</td>
+                <td class="num up">▲ 33%</td>
+              </tr>
+
+              <tr>
+                <td>Хугацаагүй хадгаламжийн данснаас мөнгө татах заавар</td>
+                <td class="num">13</td>
+                <td class="num">8</td>
+                <td class="num down">▼ 38%</td>
+              </tr>
+
+              <tr>
+                <td>Хүүхдийн хадгаламж цуцлах заавар</td>
+                <td class="num">8</td>
+                <td class="num">7</td>
+                <td class="num down">▼ 13%</td>
+              </tr>
+
+              <tr>
+                <td>Хүүхдийн хадгаламж нээх заавар</td>
+                <td class="num">5</td>
+                <td class="num">6</td>
+                <td class="num up">▲ 20%</td>
+              </tr>
+
+              <tr>
+                <td>Хадгаламж барьцаалсан зээл</td>
+                <td class="num">5</td>
+                <td class="num">5</td>
+                <td class="num up">▲ 0%</td>
+              </tr>
+
+              <tr>
+                <td>Хугацаат хадгаламж нээх заавар</td>
+                <td class="num">2</td>
+                <td class="num">5</td>
+                <td class="num up">▲ 150%</td>
+              </tr>
+
+              <tr>
+                <td>Гишүүнчлэлийн хураамж</td>
+                <td class="num">7</td>
+                <td class="num">5</td>
+                <td class="num down">▼ 29%</td>
+              </tr>
+
+              <tr>
+                <td>Бүртгүүлэх заавар</td>
+                <td class="num">7</td>
+                <td class="num">3</td>
+                <td class="num down">▼ 57%</td>
+              </tr>
+
+              <tr>
+                <td>Хугацаат хадгаламжид орлого хийх заавар</td>
+                <td class="num">4</td>
+                <td class="num">3</td>
+                <td class="num down">▼ 25%</td>
+              </tr>
+
+              <tr>
+                <td>Гүйлгээ хийх заавар</td>
+                <td class="num">1</td>
+                <td class="num">3</td>
+                <td class="num up">▲ 200%</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card soft">
+      <div class="card-title">ТОП ҮЙЛЧИЛГЭЭ / туслах ангилалаар /</div>
+      <div class="tables">
+        <div class="card soft">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Туслах ангилал</th>
+                <th>07.28-08.03</th>
+                <th>08.04-08.10</th>
+                <th>Өөрчлөлт</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <tr>
+                <td>Хадгаламж цуцлах заавар</td>
+                <td class="num">16</td>
+                <td class="num">16</td>
+                <td class="num up">▲ 0%</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card soft">
+      <div class="card-title">ТОП ГОМДОЛ / туслах ангилалаар /</div>
+      <div class="tables">
+        <div class="card soft">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Туслах ангилал</th>
+                <th>07.28-08.03</th>
+                <th>08.04-08.10</th>
+                <th>Өөрчлөлт</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <tr>
+                <td>Хугацаагүй хадгаламжнаас мөнгө татагдахгүй</td>
+                <td class="num">3</td>
+                <td class="num">1</td>
+                <td class="num down">▼ 67%</td>
+              </tr>
+
+              <tr>
+                <td>Хүүхдийн хадгаламж апп дээр харагдахгүй</td>
+                <td class="num">0</td>
+                <td class="num">1</td>
+                <td class="num up">▲ 100%</td>
+              </tr>
+
+              <tr>
+                <td>Хадгаламжийн орлого ороогүй</td>
+                <td class="num">0</td>
+                <td class="num">1</td>
+                <td class="num up">▲ 100%</td>
+              </tr>
+
+              <tr>
+                <td>Апп дээр хугацаагүй хадгаламж харагдахгүй</td>
+                <td class="num">1</td>
+                <td class="num">0</td>
+                <td class="num down">▼ 100%</td>
+              </tr>
+
+              <tr>
+                <td>Хадгаламж хугацаандаа цуцлагдаагүй</td>
+                <td class="num">2</td>
+                <td class="num">0</td>
+                <td class="num down">▼ 100%</td>
+              </tr>
+
+              <tr>
+                <td>Хадгаламж барьцаалсан зээл идэвхжээгүй</td>
+                <td class="num">1</td>
+                <td class="num">0</td>
+                <td class="num down">▼ 100%</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
+</body>
+
+</html>
