@@ -40,15 +40,6 @@ const CONFIG = {
   SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "true") === "true",
 };
 
-const fmtInt = (n) => Number(n || 0).toLocaleString();
-const pct01 = (x, d = 0) =>
-  `${(Math.max(0, Number(x) || 0) * 100).toFixed(d)}%`;
-const nnum = (v) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
-const isPct = (s) =>
-  typeof s === "string" && /^\s*-?\d+(\.\d+)?\s*%$/.test(s.trim());
-const toPct01 = (s) =>
-  isPct(s) ? Number(s.replace("%", "")) / 100 : Number(s) || 0;
-
 function _normTxt(s) {
   return String(s || "")
     .replace(/\s+/g, " ")
@@ -562,11 +553,22 @@ function wrapHtml(bodyHtml) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+
   <style>${css}</style>
 </head>
 <body>
-  ${bodyHtml}
-  <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
+ <div class="container py-3">
+    <div class="row g-3">
+      ${bodyHtml}
+      <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
+    </div>
+  </div>
 </body>
 </html>`;
 }

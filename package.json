@@ -18,6 +18,7 @@
     "run-all-once": "npm run -s run-once && npm run -s ardapp:once && npm run -s ardcredit:once"
   },
   "dependencies": {
+    "bootstrap": "^5.3.8",
     "dayjs": "^1.11.18",
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1",
