@@ -17,6 +17,8 @@
     "ardsecurity": "node ard-security.js",
     "ard-leasing:once": "node ard-leasing.js --once",
     "ardleasing": "node ard-leasing.js",
+    "ard-mpres:once": "node ard-mpres.js --once",
+    "ardmpers": "node ard-mpres.js",
     "run-all-once": "npm run -s run-once && npm run -s ardapp:once && npm run -s ardcredit:once"
   },
   "dependencies": {
