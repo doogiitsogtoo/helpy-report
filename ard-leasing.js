@@ -20,8 +20,8 @@ dayjs.extend(tz);
 const CONFIG = {
   TIMEZONE: process.env.TIMEZONE || "Asia/Ulaanbaatar",
 
-  CURR_FILE: process.env.CURR_FILE || "./ARD 8.04-8.10.xlsx",
-  PREV_FILE: process.env.PREV_FILE || "./ARD 7.28-8.03.xlsx",
+  PREV_FILE: process.env.CURR_FILE || "./ARD 09.22-09.28.xlsx",
+  CURR_FILE: process.env.PREV_FILE || "./ARD 09.29-10.05.xlsx",
 
   APP_SHEET: process.env.APP_SHEET || "Osticket1",
   ALS_SHEET: process.env.ALS_SHEET || "ALS",

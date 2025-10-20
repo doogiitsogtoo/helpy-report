@@ -1,5 +1,13 @@
-// ard-app.js — Osticket1 (prev & curr) + Social (week columns) → PDF + Email
-// ------------------------------------------------------------------------
+// ard-app.dynamic.js — Same structure as your sample, but fully dynamic from Excel
+// ---------------------------------------------------------------------------------
+// ✔ Таны жишээний нэршил, функцуудыг яг хэвээр нь хадгалсан (CONFIG, renderAssCover, extract*, runOnce, scheduler)
+// ✔ PREV_FILE хоосон бол → ижил хавтаснаас өмнөх 7 хоногийн файлыг нэрээс нь автоматаар олно (жишээ: "ARD 09.29-10.05.xlsx")
+// ✔ ASS_YEAR="auto" → хамгийн баруунд утгатай жилээр автоматаар сонгоно
+// ✔ totaly: баруунаас 4 week-like багана, Outbound 3 долоо хоног
+// ✔ Osticket1: ТОП хүснэгт (өмнөх vs одоогийн), ASS_COMPANY-гаар шүүнэ (хоосон бол бүх компани)
+// ✔ HTML→PDF (Puppeteer), и-мэйл илгээх сонголт, Даваа 09:00 scheduler
+// ---------------------------------------------------------------------------------
+
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
@@ -15,34 +23,51 @@ dayjs.extend(utc);
 dayjs.extend(tz);
 
 // ────────────────────────────────────────────────────────────────
-// CONFIG
+// CONFIG (адил нэршил)
 // ────────────────────────────────────────────────────────────────
 const CONFIG = {
   TIMEZONE: process.env.TIMEZONE || "Asia/Ulaanbaatar",
 
-  CURR_FILE: process.env.CURR_FILE || "./ARD 8.04-8.10.xlsx",
-  PREV_FILE: process.env.PREV_FILE || "./ARD 7.28-8.03.xlsx",
+  // Excel files
+  PREV_FILE: process.env.PREV_FILE || "./ARD 09.22-09.28.xlsx",
+  CURR_FILE: process.env.CURR_FILE || "./ARD 09.29-10.05.xlsx",
+  GOMDOL_FILE: process.env.GOMDOL_FILE || "",
 
-  APP_SHEET: process.env.APP_SHEET || "Osticket1", // raw tickets
-  SOCIAL_SHEET: process.env.SOCIAL_SHEET || "Social",
+  // Sheets
+  ASS_SHEET: process.env.ASS_SHEET || "APS",
+  ASS_COMPANY: process.env.ASS_COMPANY || "", // хоосон → бүх компани
+  ASS_YEAR: process.env.ASS_YEAR || "auto", // "auto" → баруун талын идэвхтэй жил
+  ASS_TAKE_LAST_N_MONTHS: Number(process.env.ASS_TAKE_LAST_N_MONTHS || 4),
+  OST_SHEET: process.env.OST_SHEET || "Osticket1",
 
+  // PDF / Email
   OUT_DIR: process.env.OUT_DIR || "./out",
+  CSS_FILE: process.env.CSS_FILE || "./css/template.css",
+  SAVE_HTML: String(process.env.SAVE_HTML ?? "true") === "true",
+  HTML_NAME_PREFIX: process.env.HTML_NAME_PREFIX || "report",
   REPORT_TITLE: process.env.REPORT_TITLE || "Ард Апп — 7 хоногийн тайлан",
   SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[ArdApp Weekly]",
-
-  EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "true") === "true",
+  EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "false") === "true",
   SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "true") === "true",
-
-  CSS_FILE: process.env.CSS_FILE || "./css/template.css",
-  COMPANY_FILTER: process.env.COMPANY_FILTER || "Ард Апп", // Osticket1: зөвхөн энэ компанийн мөр
-
-  JS_LIBS: ["https://cdn.jsdelivr.net/npm/apexcharts"], // chart
 };
 
 // ────────────────────────────────────────────────────────────────
-/* Helpers */
+// Helpers
 // ────────────────────────────────────────────────────────────────
-const nnum = (v) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+const asNum = (v) =>
+  Number(
+    String(v ?? "")
+      .replace(/[\s,\u00A0]/g, "")
+      .replace(/[^\d.-]/g, "")
+  ) || 0;
 const norm = (s) =>
   String(s || "")
     .replace(/\s+/g, " ")
@@ -50,12 +75,26 @@ const norm = (s) =>
     .toLowerCase();
 const pad2 = (n) => String(n).padStart(2, "0");
 
+function parseExcelDate(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) {
+    const d = dayjs(v);
+    return d.isValid() ? d : null;
+  }
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 20000) {
+    const ms = (n - 25569) * 86400 * 1000; // Excel serial
+    const d = dayjs(new Date(ms));
+    return d.isValid() ? d : null;
+  }
+  const d = dayjs(v);
+  return d.isValid() ? d : null;
+}
+
 function parseWeekFromFilename(p) {
-  // ".../ARD 8.04-8.10.xlsx" → {m1,d1,m2,d2, raw:"8.04-8.10"}
-  const base = path.basename(p);
-  const m = base.match(
-    /(\d{1,2})[./-](\d{1,2})\s*[-–]\s*(\d{1,2})[./-](\d{1,2})/
-  );
+  if (!p) return null;
+  const b = path.basename(p);
+  const m = b.match(/(\d{1,2})[./-](\d{1,2})\s*[-–]\s*(\d{1,2})[./-](\d{1,2})/);
   if (!m) return null;
   return {
     m1: +m[1],
@@ -65,52 +104,76 @@ function parseWeekFromFilename(p) {
     raw: `${m[1]}.${m[2]}-${m[3]}.${m[4]}`,
   };
 }
-function makeYmd(y, M, D) {
-  return `${y}-${pad2(M)}-${pad2(D)}`;
-}
-function formatWeekLabelFromFile(filePath) {
-  const wk = parseWeekFromFilename(filePath);
-  if (!wk) return "";
-  return `${pad2(wk.m1)}.${pad2(wk.d1)}-${pad2(wk.m2)}.${pad2(wk.d2)}`;
-}
-function parseExcelDate(v) {
-  if (v == null || v === "") return null;
-  const asNum = Number(v);
-  if (Number.isFinite(asNum) && asNum > 20000) {
-    const ms = (asNum - 25569) * 86400 * 1000; // Excel serial → JS
-    const d = dayjs(new Date(ms));
-    return d.isValid() ? d : null;
-  }
-  const d = dayjs(v);
-  return d.isValid() ? d : null;
-}
-function getColIdx(headers, patterns) {
-  for (let i = 0; i < headers.length; i++) {
-    const h = String(headers[i] || "");
-    if (patterns.some((re) => re.test(h))) return i;
-  }
-  return -1;
-}
-function inferYearFromDates(series, fallbackYear = dayjs().year()) {
-  const years = series.filter(Boolean).map((d) => dayjs(d).year());
-  return years.length ? years[0] : fallbackYear;
+function labelFromRange(start, end) {
+  if (!start || !end) return "";
+  return `${pad2(start.month() + 1)}.${pad2(start.date())}-${pad2(
+    end.month() + 1
+  )}.${pad2(end.date())}`;
 }
 function inferYearFromSheet(ws, dateColIndexes = []) {
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
-  const sample = [];
-  for (let r = 1; r < Math.min(rows.length, 80); r++) {
+  for (let r = 1; r < Math.min(rows.length, 100); r++) {
     const row = rows[r] || [];
     for (const c of dateColIndexes) {
       if (c >= 0 && row[c] != null) {
         const d = parseExcelDate(row[c]);
-        if (d) sample.push(d.toDate());
+        if (d) return d.year();
       }
     }
   }
-  return inferYearFromDates(sample, dayjs().year());
+  return dayjs().year();
+}
+function getLastWeekLikeFromHeader(header) {
+  const isWeek = (s) =>
+    /(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\s*[-–]\s*(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/.test(
+      String(s || "")
+    );
+  for (let i = header.length - 1; i >= 0; i--) {
+    if (isWeek(header[i])) return String(header[i]).trim();
+  }
+  return null;
+}
+function autoFindPrevFile(currFile) {
+  if (!currFile) return "";
+  const dir = path.dirname(currFile);
+  const base = path.basename(currFile);
+  const files = fs.readdirSync(dir).filter((f) => /\.xlsx$/i.test(f));
+  const wkCurr = parseWeekFromFilename(base);
+  if (!wkCurr) return "";
+
+  // infer year from the current file’s first sheet
+  let year = dayjs().year();
+  try {
+    const wb = xlsx.readFile(currFile, { cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+    outer: for (let r = 1; r < Math.min(60, rows.length); r++) {
+      for (const v of rows[r] || []) {
+        const d = parseExcelDate(v);
+        if (d) {
+          year = d.year();
+          break outer;
+        }
+      }
+    }
+  } catch {}
+
+  const endCurr = dayjs(`${year}-${pad2(wkCurr.m2)}-${pad2(wkCurr.d2)}`);
+  let best = null;
+  for (const f of files) {
+    if (f === base) continue;
+    const wk = parseWeekFromFilename(f);
+    if (!wk) continue;
+    const end = dayjs(`${year}-${pad2(wk.m2)}-${pad2(wk.d2)}`);
+    if (end.isBefore(endCurr)) {
+      const gap = endCurr.diff(end, "day");
+      if (!best || gap < best.gap) best = { f: path.join(dir, f), gap };
+    }
+  }
+  return best ? best.f : "";
 }
 
-// Social week-like labels
+// Social helpers
 function parseWeekLabelCell(s) {
   const m = String(s || "").match(
     /(\d{1,2})[./-](\d{1,2}).*?[-–].*?(\d{1,2})[./-](\d{1,2})/
@@ -118,535 +181,528 @@ function parseWeekLabelCell(s) {
   if (!m) return null;
   return { m1: +m[1], d1: +m[2], m2: +m[3], d2: +m[4], raw: m[0] };
 }
-function findWeekColumnsFuzzy(rows, target) {
-  const cands = new Map(); // col → parsed
+function findWeekColumns(rows) {
+  const cols = new Map();
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r] || [];
     for (let c = 0; c < row.length; c++) {
       const p = parseWeekLabelCell(row[c]);
-      if (p) cands.set(c, p);
+      if (p) cols.set(c, p);
     }
   }
-  if (!cands.size) return null;
-
-  const tEnd = dayjs(makeYmd(target.year, target.m2, target.d2));
-  const scored = [...cands.entries()].map(([col, p]) => {
-    const end = dayjs(makeYmd(target.year, p.m2, p.d2));
-    const start = dayjs(makeYmd(target.year, p.m1, p.d1));
-    const score =
-      Math.abs(end.diff(tEnd, "day")) * 2 +
-      Math.abs(
-        start.diff(dayjs(makeYmd(target.year, target.m1, target.d1)), "day")
-      );
-    return {
-      col,
-      label: p.raw,
-      score,
-      deltaEnd: Math.abs(end.diff(tEnd, "day")),
-    };
-  });
-
-  const close = scored
-    .filter((s) => s.deltaEnd <= 1)
-    .sort((a, b) => a.score - b.score);
-  if (close.length) return { currCol: close[0].col, currLabel: close[0].label };
-  const rightMost = Math.max(...[...cands.keys()]);
-  return { currCol: rightMost, currLabel: cands.get(rightMost).raw };
+  return cols;
 }
-function findRowByNameAnywhere(rows, name) {
-  const want = norm(name);
-  for (const r of rows) {
-    if (!r) continue;
-    for (let c = 0; c < r.length; c++) if (norm(r[c]) === want) return r;
+function chooseWeekColByEnd(cols, endDate) {
+  let best = null;
+  for (const [col, p] of cols.entries()) {
+    const end = dayjs(`${endDate.year()}-${pad2(p.m2)}-${pad2(p.d2)}`);
+    const score = Math.abs(end.diff(endDate, "day"));
+    if (!best || score < best.score) best = { col, label: p.raw, score };
+  }
+  return best;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Range detection (current & prev)
+// ────────────────────────────────────────────────────────────────
+function detectRangeFromCurrFile(currFile) {
+  const wk = parseWeekFromFilename(currFile);
+  if (!wk) {
+    const start = dayjs().tz(CONFIG.TIMEZONE).startOf("week").add(1, "day");
+    const end = start.add(6, "day");
+    return { start, end, label: labelFromRange(start, end) };
+  }
+  const wb = xlsx.readFile(currFile, { cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+  const headers = rows[0] || [];
+  const dateCol = headers.findIndex((h) =>
+    /(Үүссэн\s*огноо|Нээсэн\s*огноо|Created|Open|Хаагдсан\s*огноо|Closed)/i.test(
+      String(h || "")
+    )
+  );
+  const year = inferYearFromSheet(ws, [dateCol]);
+  const start = dayjs(`${year}-${pad2(wk.m1)}-${pad2(wk.d1)}`).startOf("day");
+  const end = dayjs(`${year}-${pad2(wk.m2)}-${pad2(wk.d2)}`).endOf("day");
+  return { start, end, label: labelFromRange(start, end) };
+}
+
+// ────────────────────────────────────────────────────────────────
+function extractAPSLatestMonths(
+  wb,
+  {
+    sheetName = CONFIG.ASS_SHEET,
+    yearLabel = CONFIG.ASS_YEAR,
+    takeLast = CONFIG.ASS_TAKE_LAST_N_MONTHS,
+  } = {}
+) {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) throw new Error(`[APS] Sheet not found: ${sheetName}`);
+
+  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+
+  // 1) Жилийн толгой мөр
+  const yearHeadRowIdx = rows.findIndex(
+    (r) => r && r.filter(Boolean).some((v) => /^\d{4}$/.test(String(v)))
+  );
+  if (yearHeadRowIdx < 0) throw new Error("[APS] Year header row not found");
+
+  const header = (rows[yearHeadRowIdx] || []).map((v) =>
+    String(v || "").trim()
+  );
+
+  // auto → баруун талын идэвхтэй жил
+  let year = String(yearLabel);
+  if (year === "auto") {
+    const yCols = header
+      .map((h, i) => (/^\d{4}$/.test(h) ? i : -1))
+      .filter((i) => i >= 0);
+    let pick = null;
+    for (const i of yCols) {
+      const has = rows.slice(yearHeadRowIdx + 1).some((r) => asNum(r?.[i]) > 0);
+      if (has) pick = i;
+    }
+    if (pick == null) pick = yCols.at(-1) ?? -1;
+    if (pick < 0) throw new Error("[APS] No usable year column");
+    year = header[pick];
+  }
+  const yearCol = header.findIndex((v) => v === String(year));
+  if (yearCol < 0) throw new Error(`[APS] Year col not found: ${year}`);
+
+  const monthLike = (s) =>
+    /^\s*\d+\s*(сар|cap)\s*$/i.test(String(s || "").trim());
+  const pickLabel = (row) => {
+    for (const c of [0, 1, 2])
+      if (monthLike(row[c])) return String(row[c]).replace(/cap/i, "сар");
+    return null;
+  };
+
+  const monthRows = [];
+  for (let r = yearHeadRowIdx + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const label = pickLabel(row);
+    if (!label) {
+      if (monthRows.length) break;
+      continue;
+    }
+    const value = asNum(row[yearCol]);
+    monthRows.push({ label, value });
+  }
+
+  const active = monthRows.filter((m) => m.value > 0);
+  const points = active.slice(-takeLast);
+
+  return { year, points, allMonths: monthRows };
+}
+
+function extractWeeklyByCategoryFromTotaly(wb, sheetName = "totaly") {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) throw new Error(`[totaly] Sheet not found: ${sheetName}`);
+  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+  const head = rows[0] || [];
+
+  const weekLike = (s) =>
+    /(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\s*[-–]\s*(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/.test(
+      String(s || "")
+    );
+  const indexes = [];
+  for (let i = head.length - 1; i >= 0 && indexes.length < 4; i--) {
+    const v = head[i];
+    if (v && weekLike(v)) indexes.push(i);
+  }
+  indexes.reverse();
+  const labels = indexes.map((i) => String(head[i]).trim());
+
+  const findRow = (re) => rows.find((r) => r && r[0] && re.test(String(r[0])));
+  const num = (r, i) => asNum(r?.[i]);
+
+  const rLav = findRow(/^Лавлагаа$/i);
+  const rUil = findRow(/^Үйлчилгээ$/i);
+  const rGom = findRow(/^Гомдол$/i);
+
+  if (!rLav || !rUil || !rGom)
+    throw new Error("[totaly] Missing rows: Лавлагаа/Үйлчилгээ/Гомдол");
+
+  return {
+    labels,
+    lav: indexes.map((i) => num(rLav, i)),
+    uil: indexes.map((i) => num(rUil, i)),
+    gom: indexes.map((i) => num(rGom, i)),
+  };
+}
+
+function extractOutbound3Weeks(wb, sheetName = "totaly") {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) throw new Error(`[totaly] Sheet not found: ${sheetName}`);
+  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+  const head = rows[0] || [];
+  const weekLike = (s) =>
+    /(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\s*[-–]\s*(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/.test(
+      String(s || "")
+    );
+  const idx = [];
+  for (let i = head.length - 1; i >= 0 && idx.length < 3; i--)
+    if (head[i] && weekLike(head[i])) idx.push(i);
+  idx.reverse();
+  const findRow = (re) => rows.find((r) => r && r[0] && re.test(String(r[0])));
+  const num = (r, i) => asNum(r?.[i]);
+  const pct = (s) => {
+    const t = String(s ?? "").trim();
+    return /^\d+(\.\d+)?%$/.test(t) ? Number(t.replace("%", "")) : asNum(s);
+  };
+
+  const rOut = findRow(/^Outbound$/i);
+  const rSR = findRow(/^success\s*outbound/i);
+  return idx.map((i) => ({
+    week: String(head[i]).trim(),
+    total: num(rOut, i),
+    success: Math.round(num(rOut, i) * (pct(rSR?.[i]) / 100)),
+    sr: pct(rSR?.[i]) || 0,
+  }));
+}
+
+function getSingleWeekLabelFromTotaly(wb, sheetName = "totaly") {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) return null;
+  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+  const header = rows[0] || [];
+  for (let i = header.length - 1; i >= 0; i--) {
+    const v = String(header[i] || "").trim();
+    if (!v) continue;
+    if (/өрчлөлт|эзлэх\s*хув/i.test(v)) continue;
+    if (/(\d{1,2}[./-]\d{1,2}).*[-–].*(\d{1,2}[./-]\d{1,2})/.test(v)) return v;
   }
   return null;
 }
 
-// ────────────────────────────────────────────────────────────────
-/* EXTRACTORS */
-// ────────────────────────────────────────────────────────────────
-
-// Phone vs Social — Osticket1 (company filter + week from filename)
-function extractPhoneSocialFromOsticket(
-  currFile,
-  sheetName,
-  companyFilter = CONFIG.COMPANY_FILTER
+function extractOstTop10_APS(
+  prevWb,
+  currWb,
+  { sheetName = CONFIG.OST_SHEET, company = CONFIG.ASS_COMPANY || "" } = {}
 ) {
-  const wb = xlsx.readFile(currFile, { cellDates: true });
-  const ws = wb.Sheets[sheetName];
-  if (!ws) throw new Error(`Sheet not found: ${sheetName}`);
-  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
-  if (!rows.length)
-    return { phone: 0, social: 0, year: dayjs().year(), weekLabelFromFile: "" };
-
-  const headers = rows[0].map((x) => String(x || ""));
-  const idx = {
-    company: getColIdx(headers, [/Компани/i]),
-    line: getColIdx(headers, [/Шугам/i]),
-    created: getColIdx(headers, [
-      /Үүссэн\s*огноо/i,
-      /Нээсэн\s*огноо/i,
-      /Created/i,
-      /Open(ed)?\s*date/i,
-    ]),
-    closed: getColIdx(headers, [/Хаагдсан\s*огноо/i, /Closed/i]),
-  };
-  if (idx.company < 0 || idx.line < 0) {
-    throw new Error(`[Osticket1] "Компани" эсвэл "Шугам" багана олдсонгүй.`);
-  }
-  const useDateCol = idx.created >= 0 ? idx.created : idx.closed;
-  if (useDateCol < 0) {
-    throw new Error(`[Osticket1] "Үүссэн/Хаагдсан огноо" багана олдсонгүй.`);
-  }
-
-  const wk = parseWeekFromFilename(currFile);
-  const year = inferYearFromSheet(ws, [useDateCol]);
-  const start = wk ? dayjs(makeYmd(year, wk.m1, wk.d1)).startOf("day") : null;
-  const end = wk ? dayjs(makeYmd(year, wk.m2, wk.d2)).endOf("day") : null;
-
-  const inRange = (d) => {
-    if (!d || !d.isValid()) return false;
-    if (!start || !end) return true;
-    return (
-      (d.isAfter(start) || d.isSame(start)) &&
-      (d.isBefore(end) || d.isSame(end))
-    );
-  };
-
-  let phone = 0,
-    social = 0;
-  for (let r = 1; r < rows.length; r++) {
-    const row = rows[r] || [];
-    const comp = String(row[idx.company] || "").trim();
-    if (companyFilter && comp !== companyFilter) continue;
-
-    const when = parseExcelDate(row[useDateCol]);
-    if (!inRange(when)) continue;
-
-    const rawLine = String(row[idx.line] || "").trim();
-    if (!rawLine || rawLine === ".") continue;
-    const L = rawLine.toLowerCase();
-    if (L === "phone" || /утас/i.test(rawLine)) phone++;
-    else if (L === "social" || /social/i.test(L)) social++;
-  }
-
-  return {
-    phone,
-    social,
-    year,
-    weekLabelFromFile: wk
-      ? `${pad2(wk.m1)}.${pad2(wk.d1)}-${pad2(wk.m2)}.${pad2(wk.d2)}`
-      : "",
-  };
-}
-
-// Social → суваг чинь (fuzzy week col)
-function extractSocialBasicFuzzy(currFile, sheetName) {
-  const wb = xlsx.readFile(currFile, { cellDates: true });
-  const ws = wb.Sheets[sheetName];
-  if (!ws) return null;
-
-  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
-  const wk = parseWeekFromFilename(currFile);
-  const year = dayjs().year();
-
-  let currCol = null,
-    prevCol = null,
-    labelCurr = "",
-    labelPrev = "";
-  if (wk) {
-    const fz = findWeekColumnsFuzzy(rows, { ...wk, year });
-    if (fz) {
-      currCol = fz.currCol;
-      labelCurr = fz.currLabel;
-      // өмнөх week-like багана (баруун→зүүн)
-      for (let c = currCol - 1; c >= 0; c--) {
-        if (
-          parseWeekLabelCell(rows[0]?.[c]) ||
-          rows.some((r) => parseWeekLabelCell((r || [])[c]))
-        ) {
-          prevCol = c;
-          const anyRow = rows.find((r) => r && r[prevCol]);
-          labelPrev = String(anyRow?.[prevCol] || "").trim() || "Өмнөх 7 хоног";
-          break;
-        }
-      }
-    }
-  }
-  if (currCol == null) return null;
-
-  const KEYS = [
-    "Chat",
-    "Comment",
-    "Telegram",
-    "Instagram",
-    "Email",
-    "Other",
-    "Total",
-  ];
-  const out = {
-    labels: [labelPrev || "Өмнөх 7 хоног", labelCurr || "Одоогийн 7 хоног"],
-    rows: {},
-    totalPrev: 0,
-    totalCurr: 0,
-  };
-
-  for (const k of KEYS) {
-    const row = findRowByNameAnywhere(rows, k) || [];
-    const p = prevCol != null ? nnum(row[prevCol]) : 0;
-    const c = nnum(row[currCol]);
-    out.rows[k] = { prev: p, curr: c };
-  }
-  out.totalPrev = out.rows.Total?.prev || 0;
-  out.totalCurr = out.rows.Total?.curr || 0;
-  return out;
-}
-
-// Чатбот лавлагаа/үйлчилгээ — Social дээрх нэрлэсэн мөрүүд (2 week col)
-const LAVLAGAA_ROWS = [
-  "Нууц код сэргээх",
-  "Гүйлгээ пин код",
-  "Данс цэнэглэх",
-  "ТАН код",
-  "И-мэйл солих заавар",
-  "Баталгаажуулалт хийх заавар",
-];
-const UILCHILGEE_ROWS = ["Дугаар солих", "Идэвхгүй төлөв", "ҮЦ данс нээх"];
-
-function pickNamedRowsFromSocialFuzzy(currFile, names, sheetName) {
-  const wb = xlsx.readFile(currFile, { cellDates: true });
-  const ws = wb.Sheets[sheetName];
-  if (!ws) return null;
-
-  const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
-  const wk = parseWeekFromFilename(currFile);
-  const year = dayjs().year();
-
-  const fz = wk ? findWeekColumnsFuzzy(rows, { ...wk, year }) : null;
-  if (!fz) return null;
-
-  const currCol = fz.currCol;
-  let prevCol = null,
-    labelPrev = "Өмнөх 7 хоног";
-  for (let c = currCol - 1; c >= 0; c--) {
-    if (
-      parseWeekLabelCell(rows[0]?.[c]) ||
-      rows.some((r) => parseWeekLabelCell((r || [])[c]))
-    ) {
-      prevCol = c;
-      const anyRow = rows.find((r) => r && r[prevCol]);
-      labelPrev = String(anyRow?.[prevCol] || "").trim() || labelPrev;
-      break;
-    }
-  }
-  const labelCurr = fz.currLabel;
-
-  const items = names.map((nm) => {
-    const r = findRowByNameAnywhere(rows, nm) || [];
-    return {
-      name: nm,
-      prev: prevCol != null ? nnum(r[prevCol]) : 0,
-      curr: nnum(r[currCol]),
-    };
-  });
-
-  return { labels: [labelPrev, labelCurr], items };
-}
-
-// ────────────────────────────────────────────────────────────────
-// TOP tables from two files (prev & curr) — dynamic by subcategory
-// ────────────────────────────────────────────────────────────────
-function buildTopFromTwoFiles(
-  prevFile,
-  currFile,
-  sheetName,
-  companyFilter,
-  limitPerGroup = 10
-) {
-  const readOne = (file) => {
-    const wb = xlsx.readFile(file, { cellDates: true });
+  const read = (wb) => {
     const ws = wb.Sheets[sheetName];
-    if (!ws) throw new Error(`Sheet not found: ${sheetName} (${file})`);
+    if (!ws) throw new Error(`[Osticket1] Sheet not found: ${sheetName}`);
     const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
-    const hdr = rows[0].map((x) => String(x || ""));
 
+    // бүх header-ийг lowercase болгосон тул regex-үүдээ lowercase-тай тааруулна
+    const hdr = (rows[0] || []).map((v) =>
+      String(v || "")
+        .trim()
+        .toLowerCase()
+    );
     const idx = {
-      company: hdr.findIndex((h) => /Компани/i.test(h)),
-      category: hdr.findIndex((h) => /Ангилал/i.test(h)),
-      subcat: hdr.findIndex((h) => /Туслах\s*ангилал/i.test(h)),
-      created: hdr.findIndex(
-        (h) =>
-          /Үүссэн\s*огноо/i.test(h) ||
-          /Нээсэн\s*огноо/i.test(h) ||
-          /Created/i.test(h)
+      comp: hdr.findIndex((h) => /(компани|company)/.test(h)),
+      cat: hdr.findIndex((h) => /(ангилал|category)/.test(h)),
+      sub: hdr.findIndex((h) =>
+        /(туслах\s*ангилал|дэд\s*ангилал|sub.?category)/.test(h)
       ),
-      closed: hdr.findIndex(
-        (h) => /Хаагдсан\s*огноо/i.test(h) || /Closed/i.test(h)
+      created: hdr.findIndex((h) =>
+        /(үүссэн\s*огноо|нээсэн\s*огноо|created|open)/.test(h)
       ),
+      closed: hdr.findIndex((h) => /(хаагдсан\s*огноо|closed)/.test(h)),
     };
-    if (idx.company < 0 || idx.category < 0 || idx.subcat < 0) {
+    // sub олдохгүй бол цааш явах аргагүй
+    if (idx.sub < 0 || idx.cat < 0 || idx.comp < 0) {
       throw new Error(
-        `[Osticket1] "Компани/Ангилал/Туслах ангилал" багануудаа шалгаарай (${file}).`
+        "[Osticket1] 'Компани'/'Ангилал'/'Туслах(Дэд) ангилал' багана олдсонгүй"
       );
     }
-    const dateCol = idx.created >= 0 ? idx.created : idx.closed;
-
-    const wk = parseWeekFromFilename(file);
-    const year = inferYearFromSheet(ws, [dateCol]);
-    const start = wk ? dayjs(makeYmd(year, wk.m1, wk.d1)).startOf("day") : null;
-    const end = wk ? dayjs(makeYmd(year, wk.m2, wk.d2)).endOf("day") : null;
+    const dateCol = idx.created >= 0 ? idx.created : idx.closed; // олдохгүй бол -1 үлдэнэ
 
     const bag = {
       Лавлагаа: new Map(),
       Үйлчилгээ: new Map(),
       Гомдол: new Map(),
     };
+    const clean = (s) => String(s || "").trim();
 
     for (let r = 1; r < rows.length; r++) {
       const row = rows[r] || [];
 
-      if (companyFilter) {
-        const comp = String(row[idx.company] || "").trim();
-        if (comp !== companyFilter) continue;
+      if (company && clean(row[idx.comp]) !== company) continue;
+
+      // Хугацааны багана олдсон үедээ л хугацаагаар шүүнэ
+      if (dateCol >= 0) {
+        const when = parseExcelDate(row[dateCol]);
+        if (!when) continue;
       }
 
-      const when = dateCol >= 0 ? parseExcelDate(row[dateCol]) : null;
-      if (start && end && (!when || when.isBefore(start) || when.isAfter(end)))
-        continue;
-
-      const cat = String(row[idx.category] || "").trim();
-      const sub = String(row[idx.subcat] || "").trim();
-      if (!sub) continue;
-      if (!bag[cat]) continue; // keep only 3 major groups
+      const cat = clean(row[idx.cat]);
+      const sub = clean(row[idx.sub]);
+      if (!sub || !bag[cat]) continue;
 
       bag[cat].set(sub, (bag[cat].get(sub) || 0) + 1);
     }
 
-    const label = wk
-      ? `${pad2(wk.m1)}.${pad2(wk.d1)}-${pad2(wk.m2)}.${pad2(wk.d2)}`
-      : "7 хоног";
-    return { bag, label };
+    const top = (k) =>
+      [...bag[k].entries()]
+        .map(([name, val]) => ({ name, curr: val }))
+        .sort((a, b) => b.curr - a.curr)
+        .slice(0, 10);
+
+    return { lav: top("Лавлагаа"), uil: top("Үйлчилгээ"), gom: top("Гомдол") };
   };
 
-  const prev = readOne(prevFile);
-  const curr = readOne(currFile);
+  const prev = read(prevWb);
+  const curr = read(currWb);
 
-  const joinTop = (cat) => {
-    const mapPrev = prev.bag[cat] || new Map();
-    const mapCurr = curr.bag[cat] || new Map();
-    const names = new Set([...mapPrev.keys(), ...mapCurr.keys()]);
-
-    const arr = [...names].map((nm) => {
-      const a = mapPrev.get(nm) || 0;
-      const b = mapCurr.get(nm) || 0;
+  const join = (p, c) => {
+    const names = new Set([...p.map((x) => x.name), ...c.map((x) => x.name)]);
+    const mP = new Map(p.map((x) => [x.name, x.curr]));
+    const mC = new Map(c.map((x) => [x.name, x.curr]));
+    const out = [...names].map((n) => {
+      const a = mP.get(n) || 0,
+        b = mC.get(n) || 0;
       const base = a > 0 ? a : b > 0 ? b : 1;
-      const delta = (b - a) / base;
-      return { name: nm, prev: a, curr: b, delta };
+      return { name: n, prev: a, curr: b, delta: (b - a) / base };
     });
-    arr.sort((x, y) => y.curr - x.curr || y.prev - x.prev);
-    return arr.slice(0, limitPerGroup);
+    out.sort((x, y) => y.curr - x.curr || y.prev - x.prev);
+    return out.slice(0, 10);
   };
+
+  const prevLabel =
+    getSingleWeekLabelFromTotaly(prevWb, "totaly") ||
+    getLastWeekLikeFromHeader(
+      xlsx.utils.sheet_to_json(prevWb.Sheets[sheetName], {
+        header: 1,
+        raw: false,
+      })[0] || []
+    ) ||
+    "Өмнөх 7 хоног";
+
+  const currLabel =
+    getSingleWeekLabelFromTotaly(currWb, "totaly") ||
+    getLastWeekLikeFromHeader(
+      xlsx.utils.sheet_to_json(currWb.Sheets[sheetName], {
+        header: 1,
+        raw: false,
+      })[0] || []
+    ) ||
+    "Одоогийн 7 хоног";
 
   return {
-    labels: [prev.label, curr.label],
-    groups: {
-      Лавлагаа: joinTop("Лавлагаа"),
-      Үйлчилгээ: joinTop("Үйлчилгээ"),
-      Гомдол: joinTop("Гомдол"),
-    },
+    labels: [prevLabel, currLabel],
+    lav: join(prev.lav, curr.lav),
+    uil: join(prev.uil, curr.uil),
+    gom: join(prev.gom, curr.gom),
   };
 }
 
 // ────────────────────────────────────────────────────────────────
-/* HTML (ApexCharts + template.css) */
+// Render (таны layout-тай 1:1)
 // ────────────────────────────────────────────────────────────────
-function pct100(x, d = 0) {
-  return `${(x * 100).toFixed(d)}%`;
-}
-function updown(v) {
-  return v >= 0 ? "▲" : "▼";
-}
-function updownCls(v) {
-  return v >= 0 ? "up" : "down";
-}
-function num(n) {
-  return Number(n || 0).toLocaleString();
-}
-
-function renderTopTableBlock(title, labels, rows) {
-  const head = `
-    <thead>
-      <tr>
-        <th>${title}</th>
-        <th>${labels[0]}</th>
-        <th>${labels[1]}</th>
-        <th>▲</th>
-      </tr>
-    </thead>`;
-
-  const body = rows
-    .map(
-      (r) => `
-    <tr>
-      <td>${r.name ? String(r.name) : ""}</td>
-      <td class="num">${num(r.prev)}</td>
-      <td class="num">${num(r.curr)}</td>
-      <td class="num ${updownCls(r.delta)}">${updown(r.delta)} ${pct100(
-        Math.abs(r.delta),
-        0
-      )}</td>
-    </tr>`
-    )
-    .join("");
-
+function renderAssCover({ company, periodText }) {
   return `
-    <div class="card">
-      <div class="table-wrap">
-        <table class="cmp">
-          ${head}
-          <tbody>${body}</tbody>
-        </table>
+  <section class="hero" style="margin-bottom:16px">
+    <div style="background:linear-gradient(135deg,#ef4444,#f97316);
+                border-radius:12px;padding:28px;display:flex;
+                justify-content:space-between;align-items:center;min-height:220px;">
+      <div style="background:#fff;border-radius:16px;padding:20px 24px;display:inline-block">
+        <div style="font-weight:700;font-size:28px;letter-spacing:.5px;color:#ef4444">ARD</div>
+        <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
       </div>
-    </div>`;
-}
-
-function renderAllTopTables(top) {
-  const titleLav = `ТОП ЛАВЛАГАА`;
-  const titleUil = `ТОП ҮЙЛЧИЛГЭЭ`;
-  const titleGom = `ТОП ГОМДОЛ`;
-
-  return `
-  <section class="sheet">
-    <div class="grid grid-2">
-      ${renderTopTableBlock(titleLav, top.labels, top.groups["Лавлагаа"])}
-      ${renderTopTableBlock(titleUil, top.labels, top.groups["Үйлчилгээ"])}
+      <div style="color:#fff;text-align:right;padding:8px 16px">
+        <div style="font-size:36px;font-weight:800;line-height:1.1">${escapeHtml(
+          company
+        )}</div>
+        <div style="opacity:.9;margin-top:8px">${escapeHtml(
+          periodText || ""
+        )}</div>
+      </div>
     </div>
-    <div class="spacer16"></div>
-    ${renderTopTableBlock(titleGom, top.labels, top.groups["Гомдол"])}
   </section>`;
 }
 
-function buildHtml(payload, cssText) {
-  const libs = CONFIG.JS_LIBS.map((s) => `<script src="${s}"></script>`).join(
-    "\n"
-  );
-  const total = (payload.donut.phone + payload.donut.social).toLocaleString();
+function renderAPSLayout({ aps, weeklyCat, top10, outbound3w }) {
+  const pct = (v) => `${(v * 100).toFixed(0)}%`;
+  const sum3 = (a, b, c) =>
+    a.map((_, i) => (a[i] || 0) + (b[i] || 0) + (c[i] || 0));
+  const totals = sum3(weeklyCat.lav, weeklyCat.uil, weeklyCat.gom);
+  const last = totals.at(-1) || 0,
+    prev = totals.at(-2) || 0;
+  const delta = prev ? (last - prev) / prev : 0;
+  const apsLabels = (aps?.points || []).map((p) => p.label);
+  const apsData = (aps?.points || []).map((p) => p.value);
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <style>${cssText}</style>
-  ${libs}
-  <title>Ard App Report</title>
-</head>
-<body>
-  <div class="header">
-    <h1>Ард Апп — Харилцагчийн үйлчилгээний тайлан</h1>
-    <div class="caption">${payload.weekCurr}</div>
+  const dataLbl = `
+    const dataLabel={id:'dataLabel',afterDatasetsDraw(ch){
+      const {ctx, data:{datasets},getDatasetMeta}=ch; ctx.save();
+      ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.textAlign='center';
+      datasets.forEach((ds,di)=>{ const meta=getDatasetMeta(di);
+        (ds.data||[]).forEach((v,i)=>{ if(v==null) return; const pt=meta.data[i];
+          ctx.fillStyle='#111'; ctx.fillText(String(v), pt.x, pt.y-6);
+        });
+      }); ctx.restore();
+    }};`;
+
+  const lineCard = `
+    <div class="card" style="height: 500px; margin-bottom: 4rem;">
+      <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн ${
+        apsLabels.length
+      } сараар/</div>
+      <canvas id="apsLine"></canvas>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script>(function(){
+      const ctx=document.getElementById('apsLine').getContext('2d');
+      new Chart(ctx,{
+        type:'line',
+        data:{ labels:${JSON.stringify(apsLabels)},
+               datasets:[{ label:'', data:${JSON.stringify(
+                 apsData
+               )}, tension:.3, pointRadius:4 }]},
+        options:{ animation:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } }
+      });
+    })();</script>`;
+
+  const weeklyCard = `
+  <div class="card">
+    <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн ${
+      weeklyCat.labels.length
+    } долоо хоногоор/</div>
+    <div class="grid">
+      <canvas id="weeklyCat"></canvas>
+      <ul style="margin:10px 0 0 18px;line-height:1.6">
+        <li>Тайлант 7 хоногт нийт <b>${last}</b>
+        (${pct((weeklyCat.lav.at(-1) || 0) / Math.max(1, last))} лавлагаа,
+         ${pct((weeklyCat.uil.at(-1) || 0) / Math.max(1, last))} үйлчилгээ,
+         ${pct((weeklyCat.gom.at(-1) || 0) / Math.max(1, last))} гомдол).</li>
+        <li>Өмнөх 7 хоногоос <b>${
+          delta >= 0 ? "өссөн" : "буурсан"
+        }</b>: <b>${pct(Math.abs(delta))}</b>.</li>
+      </ul>
+    </div>
   </div>
+  <script>(function(){
+    ${dataLbl}
+    const ctx=document.getElementById('weeklyCat').getContext('2d');
+    new Chart(ctx,{type:'bar',
+      data:{labels:${JSON.stringify(weeklyCat.labels)},
+        datasets:[
+          {label:'Лавлагаа', data:${JSON.stringify(weeklyCat.lav)}},
+          {label:'Үйлчилгээ',data:${JSON.stringify(weeklyCat.uil)}},
+          {label:'Гомдол',   data:${JSON.stringify(weeklyCat.gom)}},
+        ]},
+      options:{animation:false,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}},
+      plugins:[dataLabel]
+    });
+  })();</script>`;
 
-  <section class="sheet">
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="card-title">Бүртгэл /Сувгаар/</div>
-        <div id="chart-burtgel-social" class="chart-wrap" style="height:300px"></div>
-        <p class="kpi-note">2 сувгаар нийт <b>${total}</b> удаа хандсан.</p>
-      </div>
+  const smallMeter = (title, prev, curr) => {
+    const d = prev ? (curr - prev) / prev : 0;
+    const w = Math.min(100, Math.round((curr / Math.max(curr, prev, 1)) * 100));
+    return `
+      <div class="card soft" style="padding:10px 14px">
+        <div style="font-weight:600;margin-bottom:4px">${title}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:10px;background:#eee;border-radius:999px;overflow:hidden">
+            <div style="width:${w}%;height:100%;background:#3b82f6"></div>
+          </div>
+          <div style="min-width:120px">${prev} → <b>${curr}</b> (${
+      d >= 0 ? "+" : ""
+    }${(d * 100).toFixed(0)}%)</div>
+        </div>
+      </div>`;
+  };
 
-      <div class="card">
-        <div class="card-title">Чатбот лавлагаа</div>
-        <div id="chart-chatbot1" class="chart-wrap" style="height:320px"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="sheet">
+  const topTable = (title, rows, labels) => `
     <div class="card">
-      <div class="card-title">Чатбот үйлчилгээ</div>
-      <div id="chart-chatbot2" class="chart-wrap" style="height:340px"></div>
+      <div class="card-title">${title}</div>
+      <table class="cmp">
+        <thead><tr><th></th><th>${labels[0]}</th><th>${
+    labels[1]
+  }</th><th>%</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (r) => `<tr><td>${escapeHtml(r.name)}</td>
+                         <td class="num">${r.prev || 0}</td>
+                         <td class="num">${r.curr || 0}</td>
+                         <td class="num ${r.delta >= 0 ? "up" : "down"}">${
+                r.delta >= 0 ? "▲" : "▼"
+              } ${(Math.abs(r.delta) * 100).toFixed(0)}%</td></tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>`;
+
+  const outboundTable = `
+    <div class="card">
+      <div class="card-title">OUTBOUND</div>
+      <table class="cmp">
+        <thead><tr><th>Онцлох</th><th>Залгасан</th><th>Амжилттай</th><th>SR</th></tr></thead>
+        <tbody>
+          ${outbound3w
+            .map(
+              (r) =>
+                `<tr><td>${escapeHtml(r.week)}</td><td class="num">${
+                  r.total
+                }</td><td class="num">${r.success}</td><td class="num">${
+                  r.sr
+                }%</td></tr>`
+            )
+            .join("")}
+          <tr><td><b>Нийт</b></td><td class="num"><b>${outbound3w.reduce(
+            (a, b) => a + b.total,
+            0
+          )}</b></td>
+              <td class="num"><b>${outbound3w.reduce(
+                (a, b) => a + b.success,
+                0
+              )}</b></td>
+              <td class="num"><b>${Math.round(
+                (outbound3w.reduce((a, b) => a + b.success, 0) * 100) /
+                  Math.max(
+                    1,
+                    outbound3w.reduce((a, b) => a + b.total, 0)
+                  )
+              )}%</b></td></tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  return `
+  <section>
+    <div class="grid">
+      ${lineCard}
+      ${weeklyCard}
     </div>
-  </section>
 
-  ${renderAllTopTables(payload.top)}
+    <div class="grid grid-3" style="margin-top:8px">
+      ${smallMeter(
+        "ЛАВЛАГАА",
+        weeklyCat.lav.at(-2) || 0,
+        weeklyCat.lav.at(-1) || 0
+      )}
+      ${smallMeter(
+        "ҮЙЛЧИЛГЭЭ",
+        weeklyCat.uil.at(-2) || 0,
+        weeklyCat.uil.at(-1) || 0
+      )}
+      ${smallMeter(
+        "ГОМДОЛ",
+        weeklyCat.gom.at(-2) || 0,
+        weeklyCat.gom.at(-1) || 0
+      )}
+    </div>
 
-  <div class="footer">Автоматаар бэлтгэсэн тайлан (Ard App)</div>
+    <div class="grid grid-2" style="margin-top:8px">
+      ${outboundTable}
+      <div></div>
+    </div>
 
-  <script>
-    (function(){
-      // Week labels for series legend (from filenames)
-      const legendPrev = ${JSON.stringify(
-        payload.weekSeries?.[0] || "Өмнөх 7 хоног"
-      )};
-      const legendCurr = ${JSON.stringify(
-        payload.weekSeries?.[1] || "Одоогийн 7 хоног"
-      )};
-
-      // Donut (Phone vs Social)
-      const phone = ${Number(payload.donut.phone)};
-      const social = ${Number(payload.donut.social)};
-      const donutTotal = phone + social;
-
-      new ApexCharts(document.querySelector("#chart-burtgel-social"), {
-        series: [phone, social],
-        chart: { type: "donut", height: 300 },
-        labels: ["Phone", "Social"],
-        colors: ["#546E7A", "#7986CB"],
-        dataLabels: { enabled: true, style: { fontSize: "14px", colors: ["#fff"] } },
-        legend: { position: "top" },
-        plotOptions: {
-          pie: { donut: { size: "65%", labels: {
-            show: true, name: { show:false }, value: { show:false },
-            total: { show:true, label:"Нийт", formatter: ()=> donutTotal.toLocaleString() }
-          }}}
-        },
-        tooltip: { y: { formatter: (v)=> v.toLocaleString() } }
-      }).render();
-
-      // Bar #1 — лавлагаа
-      new ApexCharts(document.querySelector("#chart-chatbot1"), {
-        series: [
-          { name: legendPrev, data: ${JSON.stringify(payload.chart1.prev)} },
-          { name: legendCurr, data: ${JSON.stringify(payload.chart1.curr)} }
-        ],
-        chart: { type:"bar", height: 320, toolbar:{show:false} },
-        plotOptions: { bar: { columnWidth:"55%", borderRadius:5, borderRadiusApplication:"end" } },
-        dataLabels: {
-          enabled:true,
-          style:{ colors:["#fff"] },
-          background:{ enabled:true, foreColor:"#000", padding:4, borderRadius:4, borderWidth:1, borderColor:"#1E90FF", opacity:.9 }
-        },
-        xaxis: { categories: ${JSON.stringify(payload.chart1.categories)} },
-        legend: { position: "top" },
-        fill: { opacity: 1 }
-      }).render();
-
-      // Bar #2 — үйлчилгээ
-      new ApexCharts(document.querySelector("#chart-chatbot2"), {
-        series: [
-          { name: legendPrev, data: ${JSON.stringify(payload.chart2.prev)} },
-          { name: legendCurr, data: ${JSON.stringify(payload.chart2.curr)} }
-        ],
-        chart: { type:"bar", height: 340, toolbar:{show:false} },
-        plotOptions: { bar: { columnWidth:"55%", borderRadius:5, borderRadiusApplication:"end" } },
-        dataLabels: {
-          enabled:true,
-          style:{ colors:["#fff"] },
-          background:{ enabled:true, foreColor:"#000", padding:4, borderRadius:4, borderWidth:1, borderColor:"#1E90FF", opacity:.9 }
-        },
-        xaxis: { categories: ${JSON.stringify(payload.chart2.categories)} },
-        legend: { position: "top" },
-        fill: { opacity: 1 }
-      }).render();
-    })();
-  </script>
-</body>
-</html>`;
+    <div class="grid grid-1" style="margin-top:8px">
+      ${topTable("ТОП Лавлагаа", top10.lav, top10.labels)}
+      ${topTable("ТОП Үйлчилгээ", top10.uil, top10.labels)}
+      ${topTable("ТОП Гомдол", top10.gom, top10.labels)}
+    </div>
+  </section>`;
 }
 
 // ────────────────────────────────────────────────────────────────
-/* PDF + EMAIL */
+// PDF + EMAIL
 // ────────────────────────────────────────────────────────────────
 async function htmlToPdf(html, outPath) {
   const browser = await puppeteer.launch({
@@ -674,14 +730,10 @@ async function sendEmailWithPdf(pdfPath, subject) {
     console.log("[EMAIL] Disabled → skipping send.");
     return;
   }
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure =
-    port === 465 ? true : String(process.env.SMTP_SECURE || "false") === "true";
-
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port,
-    secure,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || "false") === "true",
     auth:
       process.env.SMTP_USER && process.env.SMTP_PASS
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
@@ -691,10 +743,8 @@ async function sendEmailWithPdf(pdfPath, subject) {
     connectionTimeout: 20000,
     greetingTimeout: 15000,
     socketTimeout: 30000,
-    requireTLS: port === 587,
+    requireTLS: process.env.SMTP_PORT === "587",
     tls: { minVersion: "TLSv1.2" },
-    logger: true,
-    debug: true,
   });
 
   await transporter.verify();
@@ -713,92 +763,112 @@ async function sendEmailWithPdf(pdfPath, subject) {
   });
 }
 
+function wrapHtml(bodyHtml) {
+  const css = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9ОFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous">
+
+  <style>${css}</style>
+</head>
+<body>
+ <div class="container py-3">
+    <div class="row g-3">
+      ${bodyHtml}
+      <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 // ────────────────────────────────────────────────────────────────
-/* MAIN */
+// MAIN
 // ────────────────────────────────────────────────────────────────
 async function runOnce() {
-  if (!fs.existsSync(CONFIG.CURR_FILE))
-    throw new Error(`Missing file: ${CONFIG.CURR_FILE}`);
-  if (!fs.existsSync(CONFIG.PREV_FILE))
-    throw new Error(`Missing file: ${CONFIG.PREV_FILE}`);
-  if (!fs.existsSync(CONFIG.CSS_FILE))
-    throw new Error(`Missing CSS: ${CONFIG.CSS_FILE}`);
+  if (!CONFIG.CURR_FILE)
+    throw new Error("Missing CURR_FILE (path to current Excel)");
+  [CONFIG.CURR_FILE, CONFIG.CSS_FILE].forEach((p) => {
+    if (!fs.existsSync(p)) throw new Error(`Missing file: ${p}`);
+  });
   if (!fs.existsSync(CONFIG.OUT_DIR))
     fs.mkdirSync(CONFIG.OUT_DIR, { recursive: true });
 
-  // 1) Phone/Social (curr)
-  const phoneSoc = extractPhoneSocialFromOsticket(
-    CONFIG.CURR_FILE,
-    CONFIG.APP_SHEET,
-    CONFIG.COMPANY_FILTER
+  // PREV_FILE автоматаар
+  let prevPath = CONFIG.PREV_FILE;
+  if (!prevPath) {
+    prevPath = autoFindPrevFile(CONFIG.CURR_FILE);
+    if (prevPath) console.log(`[auto] PREV_FILE = ${prevPath}`);
+  }
+  if (!prevPath)
+    throw new Error(
+      "Prev файл олдсонгүй: PREV_FILE тохируулах эсвэл файлын нэрсээ 09.29-10.05 маягаар байлгаарай."
+    );
+
+  const wbCurr = xlsx.readFile(CONFIG.CURR_FILE, { cellDates: true });
+  const wbPrev = xlsx.readFile(prevPath, { cellDates: true });
+
+  // Хугацааны муж
+  const { start: currStart, end: currEnd } = detectRangeFromCurrFile(
+    CONFIG.CURR_FILE
   );
+  const { start: prevStart, end: prevEnd } = detectRangeFromCurrFile(prevPath);
+  void currStart;
+  void currEnd;
+  void prevStart;
+  void prevEnd; // (цааш ашиглах шаардлагагүй)
 
-  // 2) Social (curr) — fuzzy week labels
-  const social = extractSocialBasicFuzzy(CONFIG.CURR_FILE, CONFIG.SOCIAL_SHEET);
-  const weekPrev = social?.labels?.[0] || "Өмнөх 7 хоног";
-  const weekCurr =
-    social?.labels?.[1] || phoneSoc.weekLabelFromFile || "Одоогийн 7 хоног";
+  // Сондгой хэсгүүд
+  const weeklyCat = extractWeeklyByCategoryFromTotaly(wbCurr, "totaly");
+  const outbound3w = extractOutbound3Weeks(wbCurr, "totaly");
+  const aps = extractAPSLatestMonths(wbCurr, {
+    sheetName: CONFIG.ASS_SHEET,
+    yearLabel: CONFIG.ASS_YEAR,
+    takeLast: CONFIG.ASS_TAKE_LAST_N_MONTHS,
+  });
+  const top10 = extractOstTop10_APS(wbPrev, wbCurr, {
+    sheetName: CONFIG.OST_SHEET,
+    company: CONFIG.ASS_COMPANY || "",
+  });
 
-  // LEGEND labels (from filenames) → fixes the “7” label
-  const legendPrev = formatWeekLabelFromFile(CONFIG.PREV_FILE) || weekPrev;
-  const legendCurr = formatWeekLabelFromFile(CONFIG.CURR_FILE) || weekCurr;
+  const cover = renderAssCover({
+    company: CONFIG.ASS_COMPANY || "АРД",
+    periodText: `${aps.points[0]?.label ?? ""} – ${
+      aps.points.at(-1)?.label ?? ""
+    } (${aps.year})`,
+  });
 
-  // 3) Чатбот лавлагаа/үйлчилгээ charts (curr vs prev col)
-  const lav = pickNamedRowsFromSocialFuzzy(
-    CONFIG.CURR_FILE,
-    LAVLAGAA_ROWS,
-    CONFIG.SOCIAL_SHEET
-  );
-  const uil = pickNamedRowsFromSocialFuzzy(
-    CONFIG.CURR_FILE,
-    UILCHILGEE_ROWS,
-    CONFIG.SOCIAL_SHEET
-  );
+  let body = "";
+  body += cover;
+  body += renderAPSLayout({ aps, weeklyCat, top10, outbound3w });
+  const html = wrapHtml(body);
 
-  const chart1 = {
-    categories: (lav?.items || []).map((x) => x.name),
-    prev: (lav?.items || []).map((x) => x.prev),
-    curr: (lav?.items || []).map((x) => x.curr),
-  };
-  const chart2 = {
-    categories: (uil?.items || []).map((x) => x.name),
-    prev: (uil?.items || []).map((x) => x.prev),
-    curr: (uil?.items || []).map((x) => x.curr),
-  };
-
-  // 4) TOP хүснэгтүүд — Osticket1 (prev vs curr) динамик
-  const top = buildTopFromTwoFiles(
-    CONFIG.PREV_FILE,
-    CONFIG.CURR_FILE,
-    CONFIG.APP_SHEET,
-    CONFIG.COMPANY_FILTER,
-    10
-  );
-
-  // 5) HTML → PDF
-  const cssText = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
-  const html = buildHtml(
-    {
-      weekPrev,
-      weekCurr,
-      weekSeries: [legendPrev, legendCurr], // <— legend names in charts
-      donut: {
-        phone: phoneSoc.phone,
-        social: social?.totalCurr || phoneSoc.social,
-      },
-      chart1,
-      chart2,
-      top,
-    },
-    cssText
-  );
-
+  // PDF
   const monday = dayjs().tz(CONFIG.TIMEZONE).startOf("week").add(1, "day");
-  const pdfName = `ardapp-weekly-${monday.format("YYYYMMDD")}.pdf`;
+  const stamp = monday.format("YYYYMMDD");
+  const pdfName = `ard-tetgever-${stamp}.pdf`;
   const pdfPath = path.join(CONFIG.OUT_DIR, pdfName);
 
   await htmlToPdf(html, pdfPath);
 
+  if (CONFIG.SAVE_HTML) {
+    const htmlPath = path.join(
+      CONFIG.OUT_DIR,
+      `${CONFIG.HTML_NAME_PREFIX}-${stamp}.html`
+    );
+    fs.writeFileSync(htmlPath, html, "utf8");
+    console.log(`[OK] HTML saved → ${htmlPath}`);
+  }
+
+  // Email
   const subject = `${CONFIG.SUBJECT_PREFIX} ${
     CONFIG.REPORT_TITLE
   } — ${monday.format("YYYY-MM-DD")}`;
@@ -809,7 +879,7 @@ async function runOnce() {
   );
 }
 
-// Scheduler
+// Scheduler (Даваа 09:00)
 function startScheduler() {
   if (!CONFIG.SCHED_ENABLED) {
     console.log("Scheduler disabled (SCHED_ENABLED=false).");
@@ -826,6 +896,7 @@ function startScheduler() {
     },
     { timezone: CONFIG.TIMEZONE }
   );
+
   console.log(`Scheduler started → Every Monday 09:00 (${CONFIG.TIMEZONE})`);
 }
 
