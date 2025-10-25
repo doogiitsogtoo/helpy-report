@@ -1,12 +1,9 @@
 // ard-bit.dynamic.js — АРД БИТ (ARB + Osticket1) → HTML → PDF (+optional email)
 // ---------------------------------------------------------------------------------
-// ✔ Таны ard-app.dynamic.js-тэй ижил санаануудыг АРД БИТ-д нутагшуулав:
-//   - PREV_FILE хоосон бол → ижил хавтаснаас өмнөх 7 хоногийн Excel-ийг нэрээс нь автоматаар олно
-//   - ASS_YEAR = "auto" → ARB шитийн баруун талын идэвхтэй жилээр автоматаар сонгоно
-//   - ARB: сүүлийн N сар (default 4) шугаман график
-//   - ARB: баруунаас 4 week-like багана олдвол (Лавлагаа/Үйлчилгээ/Гомдол) стэктэй багана; олдохгүй бол Osticket1 prev/curr fallback
-//   - Osticket1: ТОП (туслах/дэд ангилал) — өмнөх vs одоогийн долоо хоног, ASS_COMPANY-гаар шүүнэ
-//   - HTML→PDF (Puppeteer), и-мэйл илгээх сонголт, Даваа 09:00 scheduler
+// ✔ Чарт дээр тоо давхцахгүй (dataLabelPlus): намхан сегментийн шошгыг нууж, дээр нь НИЙТ-ийг цэгцтэй байршуулна
+// ✔ “Нийт бүртгэл” stacked bar + totals
+// ✔ Canvas тогтвортой өндөртэй, A4 landscape-д багтана (олигоорхог халиалтгүй)
+// ✔ PREV_FILE авто хайлт, ASS_YEAR="auto", TOP хүснэгт, PDF/Email, Scheduler
 // ---------------------------------------------------------------------------------
 
 import "dotenv/config";
@@ -30,14 +27,14 @@ const CONFIG = {
   TIMEZONE: process.env.TIMEZONE || "Asia/Ulaanbaatar",
 
   // Excel files (хоосон PREV_FILE → автоматаар олоно)
-  PREV_FILE: process.env.PREV_FILE || "./ARD 09.22-09.28.xlsx",
-  CURR_FILE: process.env.CURR_FILE || "./ARD 09.29-10.05.xlsx",
-  GOMDOL_FILE: process.env.GOMDOL_FILE || "", // reserved
+  PREV_FILE: process.env.PREV_FILE || "./ARD 10.06-10.12.xlsx",
+  CURR_FILE: process.env.CURR_FILE || "./ARD 10.13-10.19.xlsx",
+  GOMDOL_FILE: "./gomdol-weekly.xlsx",
 
   // Sheets
   ASS_SHEET: process.env.ASS_SHEET || "ARB",
   ASS_COMPANY: process.env.ASS_COMPANY || "Ард Бит",
-  ASS_YEAR: process.env.ASS_YEAR || "auto", // "auto" → баруун талын идэвхтэй жил
+  ASS_YEAR: process.env.ASS_YEAR || "auto",
   ASS_TAKE_LAST_N_MONTHS: Number(process.env.ASS_TAKE_LAST_N_MONTHS || 4),
   OST_SHEET: process.env.OST_SHEET || "Osticket1",
 
@@ -76,7 +73,6 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
-
 function parseExcelDate(v) {
   if (v == null || v === "") return null;
   if (v instanceof Date) {
@@ -85,14 +81,13 @@ function parseExcelDate(v) {
   }
   const n = Number(v);
   if (Number.isFinite(n) && n > 20000) {
-    const ms = (n - 25569) * 86400 * 1000; // Excel serial
+    const ms = (n - 25569) * 86400 * 1000;
     const d = dayjs(new Date(ms));
     return d.isValid() ? d : null;
   }
   const d = dayjs(v);
   return d.isValid() ? d : null;
 }
-
 function parseWeekFromFilename(p) {
   if (!p) return null;
   const b = path.basename(p);
@@ -112,7 +107,6 @@ function labelFromRange(start, end) {
     end.month() + 1
   )}.${pad2(end.date())}`;
 }
-
 function inferYearFromSheet(ws, dateColIndexes = []) {
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
   for (let r = 1; r < Math.min(rows.length, 100); r++) {
@@ -126,7 +120,6 @@ function inferYearFromSheet(ws, dateColIndexes = []) {
   }
   return dayjs().year();
 }
-
 function getLastWeekLikeFromHeader(header) {
   const isWeek = (s) =>
     /(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)\s*[-–]\s*(\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?)/.test(
@@ -136,7 +129,6 @@ function getLastWeekLikeFromHeader(header) {
     if (isWeek(header[i])) return String(header[i]).trim();
   return null;
 }
-
 function autoFindPrevFile(currFile) {
   if (!currFile) return "";
   const dir = path.dirname(currFile);
@@ -144,7 +136,6 @@ function autoFindPrevFile(currFile) {
   const files = fs.readdirSync(dir).filter((f) => /\.xlsx$/i.test(f));
   const wkCurr = parseWeekFromFilename(base);
   if (!wkCurr) return "";
-  // infer year from the current file’s first sheet
   let year = dayjs().year();
   try {
     const wb = xlsx.readFile(currFile, { cellDates: true });
@@ -160,7 +151,6 @@ function autoFindPrevFile(currFile) {
       }
     }
   } catch {}
-
   const endCurr = dayjs(`${year}-${pad2(wkCurr.m2)}-${pad2(wkCurr.d2)}`);
   let best = null;
   for (const f of files) {
@@ -175,7 +165,6 @@ function autoFindPrevFile(currFile) {
   }
   return best ? best.f : "";
 }
-
 function detectRangeFromCurrFile(currFile) {
   const wk = parseWeekFromFilename(currFile);
   if (!wk) {
@@ -197,7 +186,6 @@ function detectRangeFromCurrFile(currFile) {
   const end = dayjs(`${year}-${pad2(wk.m2)}-${pad2(wk.d2)}`).endOf("day");
   return { start, end, label: labelFromRange(start, end) };
 }
-
 function parseWeekLabelCell(s) {
   const m = String(s || "").match(
     /(\d{1,2})[./-](\d{1,2}).*?[-–].*?(\d{1,2})[./-](\d{1,2})/
@@ -205,14 +193,12 @@ function parseWeekLabelCell(s) {
   if (!m) return null;
   return { m1: +m[1], d1: +m[2], m2: +m[3], d2: +m[4], raw: m[0] };
 }
-
 function indexOfHeader(headers, regexes) {
   const hdrs = headers.map((x) => String(x || ""));
   for (let i = 0; i < hdrs.length; i++)
     if (regexes.some((re) => re.test(hdrs[i]))) return i;
   return -1;
 }
-
 function findRowByKeywords(rows, keywords) {
   const want = keywords.map(norm);
   for (const r of rows) {
@@ -228,7 +214,7 @@ function findRowByKeywords(rows, keywords) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Extractors — ARB sheet (months & weeks)
+// Extractors — ARB sheet
 // ────────────────────────────────────────────────────────────────
 function extractARB_MonthsLatestN(
   file,
@@ -243,7 +229,6 @@ function extractARB_MonthsLatestN(
   if (!rows.length)
     return { year: String(yearLabel), points: [], allMonths: [] };
 
-  // Row with year headers (… 2023 | 2024 | 2025 …)
   const yearHeadRowIdx = rows.findIndex(
     (r) => r && r.filter(Boolean).some((v) => /^\d{4}$/.test(String(v)))
   );
@@ -260,7 +245,7 @@ function extractARB_MonthsLatestN(
     let pick = null;
     for (const i of yCols) {
       const has = rows.slice(yearHeadRowIdx + 1).some((r) => asNum(r?.[i]) > 0);
-      if (has) pick = i; // keep the rightmost with data
+      if (has) pick = i;
     }
     if (pick == null) pick = yCols.at(-1) ?? -1;
     if (pick < 0) throw new Error("[ARB] No usable year column");
@@ -293,7 +278,6 @@ function extractARB_MonthsLatestN(
   const points = active.slice(-takeLast);
   return { year, points, allMonths: monthRows };
 }
-
 function extractARB_Last4WeeksByCategory(file, sheetName) {
   const wb = xlsx.readFile(file, { cellDates: true });
   const ws = wb.Sheets[sheetName];
@@ -336,7 +320,7 @@ function extractARB_Last4WeeksByCategory(file, sheetName) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Osticket1 helpers (prev/curr fallback + TOP tables)
+// Osticket1 helpers
 // ────────────────────────────────────────────────────────────────
 function countByCategoryWithinFile(file, sheetName, companyFilter) {
   const compMatch = (cell, filter) => {
@@ -386,7 +370,6 @@ function countByCategoryWithinFile(file, sheetName, companyFilter) {
   }
   return acc;
 }
-
 function lastWeeksFromPrevCurrFallback(
   prevFile,
   currFile,
@@ -404,7 +387,6 @@ function lastWeeksFromPrevCurrFallback(
     gom: [prev["Гомдол"] || 0, curr["Гомдол"] || 0],
   };
 }
-
 function buildTopFromTwoFiles(
   prevFile,
   currFile,
@@ -482,8 +464,7 @@ function buildTopFromTwoFiles(
       const a = mP.get(nm) || 0,
         b = mC.get(nm) || 0;
       const base = a > 0 ? a : b > 0 ? b : 1;
-      const delta = (b - a) / base;
-      return { name: nm, prev: a, curr: b, delta };
+      return { name: nm, prev: a, curr: b, delta: (b - a) / base };
     });
     arr.sort((x, y) => y.curr - x.curr || y.prev - x.prev);
     return arr.slice(0, limitPerGroup);
@@ -500,7 +481,7 @@ function buildTopFromTwoFiles(
 }
 
 // ────────────────────────────────────────────────────────────────
-// HTML (ard-app.js-тэй ижил хэв маяг: Bootstrap + Chart.js)
+// HTML (Bootstrap + Chart.js)  — A4-safe layout
 // ────────────────────────────────────────────────────────────────
 function wrapHtml(bodyHtml) {
   const css = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
@@ -511,31 +492,103 @@ function wrapHtml(bodyHtml) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <style>${css}</style>
+  <style>
+    ${css}
+    /* A4 landscape дотор багтах дээд өргөн */
+    .container { max-width: 1080px; margin: 0 auto; }
+    .card { padding: 16px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.05); }
+    .card-title { font-weight: 700; margin-bottom: 8px; }
+    .cmp { width: 100%; border-collapse: collapse; }
+    .cmp th, .cmp td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+    .cmp .num { text-align: right; }
+    .cmp .up{color:#16a34a}.cmp .down{color:#ef4444}
+    /* тогтвортой өндөртэй canvas — responsive үед ч хоосон болохгүй */
+/* ... бусад стил ... */
+#arbLine  { width:100% !important; height:320px !important; } /* өмнөхөөс бага */
+#arbWeeks { width:100% !important; height:260px !important; } /* ↓ багасгалаа */
+/* ... */
+
+    @media print { .card { break-inside: avoid; page-break-inside: avoid; } }
+  </style>
+
+  <!-- Глобал плагин: тоонуудыг давхцахгүй байршуулна -->
+  <script>
+    window.dataLabelPlus = {
+      id: 'dataLabelPlus',
+      afterDatasetsDraw(chart){
+        const {ctx, data, scales, config} = chart;
+        const yScale = scales?.y, labels = data?.labels||[], sets = data?.datasets||[];
+        ctx.save();
+        ctx.font='bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+        ctx.textAlign='center'; ctx.lineWidth=3;
+        ctx.strokeStyle='rgba(255,255,255,.96)'; ctx.fillStyle='#111';
+        const isBar = config.type==='bar';
+        const isStacked = !!(chart.options?.scales?.x?.stacked && chart.options?.scales?.y?.stacked);
+
+        // dataset labels
+        sets.forEach((ds,di)=>{
+          const meta=chart.getDatasetMeta(di);
+          (ds.data||[]).forEach((v,i)=>{
+            if(v==null) return;
+            const el = meta.data?.[i]; if(!el) return;
+            if(isBar){ const h=Math.abs((el.base??el.y)-el.y); if(h<18) return; }
+            const pos = el.tooltipPosition?el.tooltipPosition():el;
+            const x=pos.x, y=isBar? (el.y+(el.base??el.y))/2 : (pos.y-6);
+            const t = Number(v).toLocaleString('mn-MN');
+            ctx.strokeText(t,x,y); ctx.fillText(t,x,y);
+          });
+        });
+
+        // totals (stacked bar)
+        if(isBar && isStacked && yScale && typeof yScale.getPixelForValue==='function'){
+          const totals = labels.map((_,i)=>sets.reduce((s,ds)=>s+(+ds.data?.[i]||0),0));
+          const metas = sets.map((_,di)=>chart.getDatasetMeta(di));
+          totals.forEach((tot,i)=>{
+            const base = metas[0]?.data?.[i]; if(!base) return;
+            const x=(base.tooltipPosition?base.tooltipPosition():base).x;
+            const yTop=yScale.getPixelForValue(tot);
+            let minY=Infinity;
+            metas.forEach(m=>{
+              const el=m.data?.[i]; if(!el) return;
+              const h=Math.abs((el.base??el.y)-el.y);
+              if(h>=18){ const yc=(el.y+(el.base??el.y))/2; minY=Math.min(minY,yc); }
+            });
+            let y=yTop-10; if(y>(minY-12)) y=minY-12;
+            const t=Number(tot).toLocaleString('mn-MN');
+            ctx.strokeText(t,x,y); ctx.fillText(t,x,y);
+          });
+        }
+        ctx.restore();
+      }
+    };
+
+    // PDF-д хэвлэхээс өмнө chart дууссаныг шалгах тоолуур
+    window.__chartsReadyCount = 0;
+    window._incReady = function(){ window.__chartsReadyCount++; if(window.__chartsReadyCount>=2) window.__chartsReady=true; };
+  </script>
 </head>
 <body>
- <div class="container py-3">
-    <div class="row g-3">
-      ${bodyHtml}
-      <div class="footer">Автоматаар бэлтгэсэн тайлан (Ard Bit)</div>
-    </div>
+  <div class="container py-3">
+    ${bodyHtml}
+    <div class="footer" style="color:#888;font-size:12px;margin-top:8px">Автоматаар бэлтгэсэн тайлан (Ard Bit)</div>
   </div>
 </body>
 </html>`;
 }
+
 function renderAssCover({ company, periodText }) {
   return `
   <section class="hero" style="margin-bottom:16px">
-    <div style="background:linear-gradient(135deg,#ef4444,#f97316);border-radius:12px;padding:28px;display:flex;justify-content:space-between;align-items:center;min-height:220px;">
-      <div style="background:#fff;border-radius:16px;padding:20px 24px;display:inline-block">
-        <div style="font-weight:700;font-size:28px;letter-spacing:.5px;color:#ef4444">ARD</div>
+    <div style="background:linear-gradient(135deg,#ef4444,#f97316);border-radius:12px;padding:24px;display:flex;justify-content:space-between;align-items:center;min-height:160px;">
+      <div style="background:#fff;border-radius:14px;padding:16px 20px;display:inline-block">
+        <div style="font-weight:800;font-size:24px;letter-spacing:.5px;color:#ef4444">ARD</div>
         <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
       </div>
-      <div style="color:#fff;text-align:right;padding:8px 16px">
-        <div style="font-size:36px;font-weight:800;line-height:1.1">${escapeHtml(
+      <div style="color:#fff;text-align:right;padding:6px 12px">
+        <div style="font-size:30px;font-weight:800;line-height:1.1">${escapeHtml(
           company
         )}</div>
-        <div style="opacity:.9;margin-top:8px">${escapeHtml(
+        <div style="opacity:.9;margin-top:6px">${escapeHtml(
           periodText || ""
         )}</div>
       </div>
@@ -543,33 +596,32 @@ function renderAssCover({ company, periodText }) {
   </section>`;
 }
 
+// ────────────────────────────────────────────────────────────────
+// Charts (with data labels + totals, A4-safe)
+// ────────────────────────────────────────────────────────────────
 function renderBitLayout({ monthN, weeks, top }) {
-  // Chart.js config helpers
-  const dataLbl = `
-    const dataLabel={id:'dataLabel',afterDatasetsDraw(ch){
-      const {ctx, data:{datasets},getDatasetMeta}=ch; ctx.save();
-      ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.textAlign='center';
-      datasets.forEach((ds,di)=>{ const meta=getDatasetMeta(di);
-        (ds.data||[]).forEach((v,i)=>{ if(v==null) return; const pt=meta.data[i];
-          ctx.fillStyle='#111'; ctx.fillText(String(v), pt.x, pt.y-6);
-        });
-      }); ctx.restore();
-    }};`;
-
   const lineCard = `
-    <div class="card" style="height: 500px; margin-bottom: 4rem;">
+    <div class="card" style="margin-bottom:12px">
       <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн ${
         monthN.labels.length
       } сараар/</div>
       <canvas id="arbLine"></canvas>
     </div>
     <script>(function(){
-      const ctx=document.getElementById('arbLine').getContext('2d');
-      new Chart(ctx,{ type:'line', data:{ labels:${JSON.stringify(
-        monthN.labels
-      )}, datasets:[{label:'', data:${JSON.stringify(
-    monthN.data
-  )}, tension:.3, pointRadius:4 }] }, options:{ animation:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
+      try{
+        const ctx=document.getElementById('arbLine').getContext('2d');
+        new Chart(ctx,{
+          type:'line',
+          data:{ labels:${JSON.stringify(monthN.labels)},
+                 datasets:[{label:'', data:${JSON.stringify(
+                   monthN.data
+                 )}, tension:.3, pointRadius:4 }] },
+          options:{ animation:false, responsive:true, maintainAspectRatio:false,
+                    plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} },
+          plugins:[window.dataLabelPlus||{}]
+        });
+      }catch(e){ console.error('arbLine error', e); }
+      _incReady();
     })();</script>`;
 
   const weeklyCard = `
@@ -577,20 +629,25 @@ function renderBitLayout({ monthN, weeks, top }) {
       <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн ${
         weeks.labels.length
       } долоо хоногоор/</div>
-      <div class="grid">
-        <canvas id="arbWeeks"></canvas>
-      </div>
+      <canvas id="arbWeeks"></canvas>
     </div>
     <script>(function(){
-      ${dataLbl}
-      const ctx=document.getElementById('arbWeeks').getContext('2d');
-      new Chart(ctx,{type:'bar', data:{labels:${JSON.stringify(
-        weeks.labels
-      )}, datasets:[
-        {label:'Лавлагаа', data:${JSON.stringify(weeks.lav)}},
-        {label:'Үйлчилгээ', data:${JSON.stringify(weeks.uil)}},
-        {label:'Гомдол', data:${JSON.stringify(weeks.gom)}}
-      ]}, options:{animation:false,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}}, plugins:[dataLabel]});
+      try{
+        const ctx=document.getElementById('arbWeeks').getContext('2d');
+        new Chart(ctx,{
+          type:'bar',
+          data:{ labels:${JSON.stringify(weeks.labels)}, datasets:[
+            {label:'Лавлагаа',  data:${JSON.stringify(weeks.lav)}},
+            {label:'Үйлчилгээ', data:${JSON.stringify(weeks.uil)}},
+            {label:'Гомдол',    data:${JSON.stringify(weeks.gom)}}
+          ]},
+          options:{ animation:false, responsive:true, maintainAspectRatio:false,
+                    plugins:{legend:{position:'bottom'}},
+                    scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true} } },
+          plugins:[window.dataLabelPlus||{}]
+        });
+      }catch(e){ console.error('arbWeeks error', e); }
+      _incReady();
     })();</script>`;
 
   const topTable = (title, rows) => `
@@ -603,14 +660,13 @@ function renderBitLayout({ monthN, weeks, top }) {
         <tbody>
           ${(rows || [])
             .map(
-              (r) =>
-                `<tr><td>${escapeHtml(r.name)}</td><td class="num">${
-                  r.prev || 0
-                }</td><td class="num">${r.curr || 0}</td><td class="num ${
-                  r.delta >= 0 ? "up" : "down"
-                }">${r.delta >= 0 ? "▲" : "▼"} ${(
-                  Math.abs(r.delta) * 100
-                ).toFixed(0)}%</td></tr>`
+              (r) => `
+            <tr><td>${escapeHtml(r.name)}</td>
+                <td class="num">${(r.prev || 0).toLocaleString("mn-MN")}</td>
+                <td class="num">${(r.curr || 0).toLocaleString("mn-MN")}</td>
+                <td class="num ${r.delta >= 0 ? "up" : "down"}">${
+                r.delta >= 0 ? "▲" : "▼"
+              } ${(Math.abs(r.delta) * 100).toFixed(0)}%</td></tr>`
             )
             .join("")}
         </tbody>
@@ -619,13 +675,11 @@ function renderBitLayout({ monthN, weeks, top }) {
 
   return `
   <section>
-    <div class="grid">
-      ${lineCard}
-      ${weeklyCard}
-    </div>
-    <div class="grid grid-1" style="margin-top:8px">
+    ${lineCard}
+    ${weeklyCard}
+    <div class="grid" style="margin-top:12px">
       ${topTable("ТОП Лавлагаа", top.groups["Лавлагаа"])}
-      ${topTable("ТОП Үйчилгээ", top.groups["Үйлчилгээ"])}
+      ${topTable("ТОП Үйлчилгээ", top.groups["Үйлчилгээ"])}
       ${topTable("ТОП Гомдол", top.groups["Гомдол"])}
     </div>
   </section>`;
@@ -637,11 +691,19 @@ function renderBitLayout({ monthN, weeks, top }) {
 async function htmlToPdf(html, outPath) {
   const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    defaultViewport: { width: 1600, height: 1000, deviceScaleFactor: 2 },
+    defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 2 }, // өмнөх 1600 → 1280
   });
+  // ... (үлдсэн хэсэг өөрчлөгдөөгүй
+
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
+
+    // чартууд зурж дуусахыг хүлээе
+    await page
+      .waitForFunction(() => window.__chartsReady === true, { timeout: 12000 })
+      .catch(() => {});
+
     await page.emulateMediaType("screen");
     await page.pdf({
       path: outPath,
@@ -649,13 +711,12 @@ async function htmlToPdf(html, outPath) {
       landscape: true,
       printBackground: true,
       preferCSSPageSize: true,
-      margin: { top: "16mm", right: "14mm", bottom: "16mm", left: "14mm" },
+      margin: { top: "14mm", right: "12mm", bottom: "14mm", left: "12mm" },
     });
   } finally {
     await browser.close();
   }
 }
-
 async function sendEmailWithPdf(pdfPath, subject) {
   if (!CONFIG.EMAIL_ENABLED) {
     console.log("[EMAIL] Disabled → skipping send.");
@@ -716,17 +777,7 @@ async function runOnce() {
       "Prev файл олдсонгүй: PREV_FILE тохируулах эсвэл файлын нэрсээ 09.29-10.05 маягаар байлгаарай."
     );
 
-  // Range (not shown but useful for future)
-  const { start: currStart, end: currEnd } = detectRangeFromCurrFile(
-    CONFIG.CURR_FILE
-  );
-  const { start: prevStart, end: prevEnd } = detectRangeFromCurrFile(prevPath);
-  void currStart;
-  void currEnd;
-  void prevStart;
-  void prevEnd;
-
-  // ARB months (ASS_YEAR auto)
+  // ARB months
   const months = extractARB_MonthsLatestN(
     CONFIG.CURR_FILE,
     CONFIG.ASS_SHEET,
@@ -738,7 +789,7 @@ async function runOnce() {
     data: months.points.map((p) => Number(p.value) || 0),
   };
 
-  // ARB weeks or fallback from Osticket1 prev/curr
+  // ARB weeks or fallback from Osticket1
   let weeks = extractARB_Last4WeeksByCategory(
     CONFIG.CURR_FILE,
     CONFIG.ASS_SHEET
@@ -752,7 +803,7 @@ async function runOnce() {
     );
   }
 
-  // Osticket1 TOP tables (prev vs curr) for selected company
+  // Osticket1 TOP
   const top = buildTopFromTwoFiles(
     prevPath,
     CONFIG.CURR_FILE,
@@ -761,38 +812,12 @@ async function runOnce() {
     10
   );
 
-  // Totals & shares (current)
-  const currCat = countByCategoryWithinFile(
-    CONFIG.CURR_FILE,
-    CONFIG.OST_SHEET,
-    CONFIG.ASS_COMPANY
-  );
-  const prevCat = countByCategoryWithinFile(
-    prevPath,
-    CONFIG.OST_SHEET,
-    CONFIG.ASS_COMPANY
-  );
-  const totalPrev =
-    (prevCat["Лавлагаа"] || 0) +
-    (prevCat["Үйлчилгээ"] || 0) +
-    (prevCat["Гомдол"] || 0);
-  const totalCurr =
-    (currCat["Лавлагаа"] || 0) +
-    (currCat["Үйлчилгээ"] || 0) +
-    (currCat["Гомдол"] || 0);
-  const deltaTot = totalPrev > 0 ? (totalCurr - totalPrev) / totalPrev : 0;
-  const pctShare = {
-    lav: totalCurr ? (currCat["Лавлагаа"] || 0) / totalCurr : 0,
-    uil: totalCurr ? (currCat["Үйлчилгээ"] || 0) / totalCurr : 0,
-    gom: totalCurr ? (currCat["Гомдол"] || 0) / totalCurr : 0,
-  };
-
-  // Caption from filenames (prev → curr)
+  // Caption
   const caption = `${parseWeekFromFilename(prevPath)?.raw || ""} → ${
     parseWeekFromFilename(CONFIG.CURR_FILE)?.raw || ""
   }`;
 
-  // Build HTML (ard-app style)
+  // Build HTML
   const cover = renderAssCover({
     company: CONFIG.ASS_COMPANY || "АРД БИТ",
     periodText: caption,
@@ -827,7 +852,7 @@ async function runOnce() {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Scheduler (Даваа 09:00)
+// Scheduler
 // ────────────────────────────────────────────────────────────────
 function startScheduler() {
   if (!CONFIG.SCHED_ENABLED) {

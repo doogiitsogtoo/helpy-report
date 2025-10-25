@@ -1,5 +1,5 @@
-// ard-security.js — Osticket1 (prev & curr) + ASC (4 months/weeks) → PDF + Email
-// --------------------------------------------------------------------------------
+// ard-security.js — Osticket1 (prev & curr) + ASC (4 months/weeks) + GOMDOL(Sheet1) → HTML → PDF → Email
+// ────────────────────────────────────────────────────────────────
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
@@ -20,28 +20,37 @@ dayjs.extend(tz);
 const CONFIG = {
   TIMEZONE: process.env.TIMEZONE || "Asia/Ulaanbaatar",
 
-  PREV_FILE: process.env.CURR_FILE || "./ARD 09.22-09.28.xlsx",
-  CURR_FILE: process.env.PREV_FILE || "./ARD 09.29-10.05.xlsx",
+  PREV_FILE: process.env.PREV_FILE || "./ARD 10.06-10.12.xlsx",
+  CURR_FILE: process.env.CURR_FILE || "./ARD 10.13-10.19.xlsx",
 
+  // Тусдаа гомдлын файл (Sheet1)
+  GOMDOL_FILE: process.env.GOMDOL_FILE || "./gomdol-weekly.xlsx",
+  GOMDOL_SHEET: process.env.GOMDOL_SHEET || "Sheet1",
+
+  // Sheets
   APP_SHEET: process.env.APP_SHEET || "Osticket1", // raw tickets
   ASC_SHEET: process.env.ASC_SHEET || "ASC", // aggregated (months + weeks)
-
-  OUT_DIR: process.env.OUT_DIR || "./out",
-  REPORT_TITLE: process.env.REPORT_TITLE || "Ард Секюритиз — 7 хоногийн тайлан",
-  SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[ArdSecurity Weekly]",
-
-  EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "true") === "true",
-  SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "true") === "true",
-
-  CSS_FILE: process.env.CSS_FILE || "./css/template.css",
   COMPANY_FILTER: process.env.COMPANY_FILTER || "Ард Секюритиз",
 
-  JS_LIBS: ["https://cdn.jsdelivr.net/npm/apexcharts"],
+  // PDF / Email
+  OUT_DIR: process.env.OUT_DIR || "./out",
+  CSS_FILE: process.env.CSS_FILE || "./css/template.css",
+  REPORT_TITLE: process.env.REPORT_TITLE || "Ард Секюритиз — 7 хоногийн тайлан",
+  SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[ArdSecurity Weekly]",
+  EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "true") === "true",
+  SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "true") === "true",
 };
 
 // ────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────
+const esc = (s) =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const nnum = (v) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
 const pad2 = (n) => String(n).padStart(2, "0");
 const norm = (s) =>
@@ -49,6 +58,9 @@ const norm = (s) =>
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+const makeYmd = (y, M, D) => `${y}-${pad2(M)}-${pad2(D)}`;
+const num = (n) => Number(n || 0).toLocaleString();
+const pct = (x, d = 0) => `${((x || 0) * 100).toFixed(d)}%`;
 
 function parseWeekFromFilename(p) {
   const base = path.basename(p);
@@ -64,9 +76,6 @@ function parseWeekFromFilename(p) {
     raw: `${pad2(m[1])}.${pad2(m[2])}-${pad2(m[3])}.${pad2(m[4])}`,
   };
 }
-function makeYmd(y, M, D) {
-  return `${y}-${pad2(M)}-${pad2(D)}`;
-}
 function parseExcelDate(v) {
   if (v == null || v === "") return null;
   const asNum = Number(v);
@@ -77,10 +86,6 @@ function parseExcelDate(v) {
   }
   const d = dayjs(v);
   return d.isValid() ? d : null;
-}
-function inferYearFromDates(series, fallbackYear = dayjs().year()) {
-  const years = series.filter(Boolean).map((d) => dayjs(d).year());
-  return years.length ? years[0] : fallbackYear;
 }
 function inferYearFromSheet(ws, dateColIndexes = []) {
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
@@ -94,7 +99,8 @@ function inferYearFromSheet(ws, dateColIndexes = []) {
       }
     }
   }
-  return inferYearFromDates(sample, dayjs().year());
+  const years = sample.map((d) => dayjs(d).year());
+  return years.length ? years[0] : dayjs().year();
 }
 function getColIdx(headers, patterns) {
   for (let i = 0; i < headers.length; i++) {
@@ -102,14 +108,6 @@ function getColIdx(headers, patterns) {
     if (patterns.some((re) => re.test(h))) return i;
   }
   return -1;
-}
-function findRowByNameAnywhere(rows, name) {
-  const want = norm(name);
-  for (const r of rows) {
-    if (!r) continue;
-    for (let c = 0; c < r.length; c++) if (norm(r[c]) === want) return r;
-  }
-  return null;
 }
 function parseWeekLabelCell(s) {
   const m = String(s || "").match(
@@ -180,107 +178,116 @@ function countByCategoryWithinFile(file, sheetName, companyFilter) {
   }
   return acc;
 }
-// ASC → last 4 months with non-zero values (robust)
-function month4FromASC(file, sheetName, preferYear = dayjs().year()) {
+
+/** ASC → “Нийт хандалт / Сүүлийн 4 сар”
+ * Зөвхөн “Ард Секюритиз” үндсэн блок (Outbound-оос өмнө, “Нийт” мөрт хүрэхэд зогсоно)
+ * Одоогийн сараас −3..одоогийн сар; бүгд 0 бол хүснэгт дээрх бодит сүүлийн 4 сар руу fallback.
+ */
+function month4FromASC_SMART(file, sheetName) {
   const wb = xlsx.readFile(file, { cellDates: true });
   const ws = wb.Sheets[sheetName];
   if (!ws) return { labels: [], data: [] };
-
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
   if (!rows.length) return { labels: [], data: [] };
 
-  // 1) locate year column
-  const looksLikeYear = (v) =>
-    /^\d{4}$/.test(String(v || "").trim()) &&
-    +String(v).trim() >= 2019 &&
-    +String(v).trim() <= 2100;
-
-  let yearCol = Number.isInteger(Number(process.env.ASC_YEAR_COL))
-    ? Number(process.env.ASC_YEAR_COL)
-    : null;
-  let headerRow = -1;
-
-  if (!Number.isInteger(yearCol)) {
-    for (let r = 0; r < Math.min(30, rows.length); r++) {
-      const row = rows[r] || [];
-      for (let c = 0; c < row.length; c++) {
-        const cell = String(row[c] ?? "").trim();
-        if (looksLikeYear(cell) && cell === String(preferYear)) {
-          yearCol = c;
-          headerRow = r;
-          break;
-        }
-      }
-      if (Number.isInteger(yearCol)) break;
-    }
-  }
-  if (!Number.isInteger(yearCol)) {
-    // fallback: right-most year-looking cell in first 30 rows
-    for (let r = 0; r < Math.min(30, rows.length); r++) {
-      const row = rows[r] || [];
-      for (let c = row.length - 1; c >= 0; c--) {
-        if (looksLikeYear(row[c])) {
-          yearCol = c;
-          headerRow = r;
-          break;
-        }
-      }
-      if (Number.isInteger(yearCol)) break;
-    }
-  }
-  if (!Number.isInteger(yearCol)) {
-    // ultimate fallback → F багана (0-индекс 5), толгой 1-р мөр
-    yearCol = 5;
-    headerRow = 1;
-  }
-
-  // 2) month rows (stop before "Нийт")
+  const digits = (v) => String(v ?? "").replace(/[^\d]/g, "");
+  const looksLikeYear = (v) => {
+    const d = digits(v);
+    const y = Number(d);
+    return d.length === 4 && y >= 2019 && y <= 2100;
+  };
   const monthFromCell = (v) => {
     const s = String(v ?? "")
       .trim()
       .toLowerCase();
-    const m = s.match(/^0?(\d{1,2})\s*сар$/) || s.match(/^0?(\d{1,2})$/);
-    return m ? Math.max(1, Math.min(12, +m[1])) : null;
+    const m = (s.match(/^(\d{1,2})\s*сар$/) ||
+      s.match(/^0?(\d{1,2})$/) ||
+      [])[1];
+    return m ? Math.max(1, Math.min(12, +m)) : null;
   };
-
-  const mm = [];
-  for (let r = headerRow + 1; r < rows.length; r++) {
-    const row = rows[r] || [];
-    const first = String(row[0] || "")
+  const isStopRow = (cell) => {
+    const s = String(cell ?? "")
       .trim()
       .toLowerCase();
-    if (first === "нийт" || first === "niit") break; // Outbound хэсэг рүү орохгүй
-
-    const m = monthFromCell(row[0]) ?? monthFromCell(row[1]);
-    if (!m) continue;
-
-    const val = nnum(row[yearCol]);
-    // сар давхардвал хамгийн сүүлийн утгыг авна
-    mm[m] = val;
-  }
-
-  // 3) take last 4 non-zero months actually present
-  const present = [];
-  for (let m = 1; m <= 12; m++) {
-    if (mm[m] != null && Number(mm[m]) > 0) present.push([m, Number(mm[m])]);
-  }
-  // Хэрэв бүгд 0 байвал байгаа саруудаас авна
-  const base = present.length
-    ? present
-    : Object.entries(mm)
-        .filter(([m, v]) => v != null)
-        .map(([m, v]) => [Number(m), Number(v)]);
-
-  base.sort((a, b) => a[0] - b[0]);
-  const last4 = base.slice(-4);
-
-  return {
-    labels: last4.map(([m]) => `${m}сар`),
-    data: last4.map(([, v]) => v || 0),
+    return s === "нийт" || s === "niit" || s === "outbound";
   };
+
+  // 1) Жилийн баганууд
+  let headerRow = -1;
+  const yearCols = new Map();
+  for (let r = 0; r < Math.min(rows.length, 80); r++) {
+    const row = rows[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      if (looksLikeYear(row[c])) {
+        if (headerRow < 0) headerRow = r;
+        yearCols.set(Number(digits(row[c])), c);
+      }
+    }
+    if (yearCols.size && headerRow >= 0) break;
+  }
+  if (headerRow < 0 || yearCols.size === 0) return { labels: [], data: [] };
+
+  // 2) Сарын шошго байрлах багана (ихэвчлэн A)
+  let monthCol = 0,
+    best = -1;
+  for (const cand of [0, 1, 2]) {
+    let score = 0;
+    for (let r = headerRow + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      if (isStopRow(row[0])) break; // зөвхөн дээд блок
+      if (monthFromCell(row[cand])) score++;
+    }
+    if (score > best) {
+      best = score;
+      monthCol = cand;
+    }
+  }
+  if (best <= 0) return { labels: [], data: [] };
+
+  // 3) year→month→value (Outbound/Нийт-ээс өмнөх мөрүүд)
+  const mm = new Map();
+  for (const [y] of yearCols) mm.set(y, new Map());
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    if (isStopRow(row[0])) break;
+    const m = monthFromCell(row[monthCol]);
+    if (!m) continue;
+    for (const [y, col] of yearCols) {
+      const v = nnum(row[col]);
+      mm.get(y).set(m, v);
+    }
+  }
+
+  // 4) Одоогоос 4 сар
+  const now = dayjs().tz(CONFIG.TIMEZONE);
+  const want = [];
+  for (let i = 3; i >= 0; i--) {
+    const t = now.subtract(i, "month");
+    want.push({ y: t.year(), m: t.month() + 1 });
+  }
+  let labels = [],
+    data = [];
+  for (const { y, m } of want) {
+    labels.push(`${m}сар`);
+    data.push(Number(mm.get(y)?.get(m) ?? 0));
+  }
+
+  // 5) Бүгд 0 бол — sheet дэх бодит сүүлийн 4 сар
+  if (data.every((v) => v === 0)) {
+    const all = [];
+    for (const [y, map] of mm)
+      for (const [m, v] of map) all.push({ y, m, v: Number(v || 0) });
+    all.sort((a, b) => a.y - b.y || a.m - b.m);
+    const tail = all.slice(-4);
+    if (tail.length) {
+      labels = tail.map((x) => `${x.m}сар`);
+      data = tail.map((x) => x.v);
+    }
+  }
+  return { labels, data };
 }
 
-// ASC → 4 weeks stacked (Lavlagaa/Uilchilgee/Gomdol)
+// ASC → 4 weeks by category (Lav/Uilch/Gomdol) if available
 function last4WeeksByCategoryFromASC(file, sheetName) {
   const wb = xlsx.readFile(file, { cellDates: true });
   const ws = wb.Sheets[sheetName];
@@ -293,10 +300,17 @@ function last4WeeksByCategoryFromASC(file, sheetName) {
   if (!weekCols.length) return null;
   const last4 = weekCols.slice(-4);
 
+  const findRow = (name) => {
+    const want = norm(name);
+    for (const r of rows)
+      for (const cell of r || []) if (norm(cell) === want) return r;
+    return [];
+  };
+
   const wantRows = {
-    Лавлагаа: findRowByNameAnywhere(rows, "Лавлагаа") || [],
-    Үйлчилгээ: findRowByNameAnywhere(rows, "Үйлчилгээ") || [],
-    Гомдол: findRowByNameAnywhere(rows, "Гомдол") || [],
+    Лавлагаа: findRow("Лавлагаа") || [],
+    Үйлчилгээ: findRow("Үйлчилгээ") || [],
+    Гомдол: findRow("Гомдол") || [],
   };
 
   return {
@@ -318,7 +332,7 @@ function last4WeeksByCategoryFromASC(file, sheetName) {
   };
 }
 
-// Fallback: 2 weeks only from prev/curr Osticket1
+// Fallback: 2 weeks only (prev/curr)
 function lastWeeksFromPrevCurrFallback(
   prevFile,
   currFile,
@@ -342,7 +356,41 @@ function lastWeeksFromPrevCurrFallback(
         data: [prev["Лавлагаа"] || 0, curr["Лавлагаа"] || 0],
       },
     ],
+    _rawPrev: prev,
+    _rawCurr: curr,
   };
+}
+
+// Гомдлын override: GOMDOL_FILE → Sheet1
+function overrideGomdolFromSheet1(weeksPayload) {
+  try {
+    if (!fs.existsSync(CONFIG.GOMDOL_FILE)) return weeksPayload;
+    const wb = xlsx.readFile(CONFIG.GOMDOL_FILE, { cellDates: true });
+    const ws = wb.Sheets[CONFIG.GOMDOL_SHEET];
+    if (!ws) return weeksPayload;
+
+    const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
+    if (!rows.length) return weeksPayload;
+
+    const weekCols = findWeekColumnsFuzzy(rows);
+    if (!weekCols.length) return weeksPayload;
+
+    const gRow =
+      rows.find((r) => (r || []).some((c) => norm(c) === "гомдол")) || [];
+    if (!gRow.length) return weeksPayload;
+
+    const gomData = weeksPayload.labels.map((lbl) => {
+      const match = weekCols.find((w) => String(w.label) === String(lbl));
+      return match ? nnum(gRow[match.col]) : 0;
+    });
+
+    const newSeries = (weeksPayload.series || []).map((s) =>
+      s.name === "Гомдол" ? { ...s, data: gomData } : s
+    );
+    return { ...weeksPayload, series: newSeries };
+  } catch {
+    return weeksPayload;
+  }
 }
 
 // TOP хүснэгтүүд (prev vs curr) — туслах ангиллаар
@@ -364,15 +412,10 @@ function buildTopFromTwoFiles(
       company: hdr.findIndex((h) => /Компани/i.test(h)),
       category: hdr.findIndex((h) => /Ангилал/i.test(h)),
       subcat: hdr.findIndex((h) => /Туслах\s*ангилал/i.test(h)),
-      created: hdr.findIndex(
-        (h) =>
-          /Үүссэн\s*огноо/i.test(h) ||
-          /Нээсэн\s*огноо/i.test(h) ||
-          /Created/i.test(h)
+      created: hdr.findIndex((h) =>
+        /Үүссэн\s*огноо|Нээсэн\s*огноо|Created/i.test(h)
       ),
-      closed: hdr.findIndex(
-        (h) => /Хаагдсан\s*огноо/i.test(h) || /Closed/i.test(h)
-      ),
+      closed: hdr.findIndex((h) => /Хаагдсан\s*огноо|Closed/i.test(h)),
     };
     const dateCol = idx.created >= 0 ? idx.created : idx.closed;
 
@@ -434,242 +477,242 @@ function buildTopFromTwoFiles(
 }
 
 // ────────────────────────────────────────────────────────────────
-// HTML
+// HTML (Chart.js + value-label plugin)
 // ────────────────────────────────────────────────────────────────
-function pct100(x, d = 0) {
-  return `${(x * 100).toFixed(d)}%`;
-}
-function updown(v) {
-  return v >= 0 ? "▲" : "▼";
-}
-function updownCls(v) {
-  return v >= 0 ? "up" : "down";
-}
-function num(n) {
-  return Number(n || 0).toLocaleString();
+function renderCover({ company, periodText }) {
+  return `
+  <section class="sheet">
+    <div style="background:linear-gradient(135deg,#ff6a6a,#ffa46a); border-radius:12px; padding:20px 24px; display:flex; justify-content:space-between; align-items:center;">
+      <div style="background:#fff;border-radius:12px;padding:14px 18px;display:inline-block">
+        <div style="font-weight:800;font-size:24px;letter-spacing:.5px;color:#b91c1c">ARD</div>
+        <div style="color:#777;margin-top:4px">Хүчтэй. Хамтдаа.</div>
+      </div>
+      <div style="color:#fff;text-align:right">
+        <div style="font-size:28px;font-weight:800;line-height:1.1">${esc(
+          company
+        )}</div>
+        <div style="opacity:.95;margin-top:6px">${esc(periodText || "")}</div>
+      </div>
+    </div>
+  </section>`;
 }
 
 function renderTopTableBlock(title, labels, rows) {
-  const head = `
-    <thead>
-      <tr>
-        <th width="50%">${title}</th>
-        <th>${labels[0]}</th>
-        <th>${labels[1]}</th>
-        <th>%</th>
-      </tr>
-    </thead>`;
-  const body = rows
-    .map(
-      (r) => `
-      <tr>
-        <td>${r.name ? String(r.name) : ""}</td>
-        <td class="num">${num(r.prev)}</td>
-        <td class="num">${num(r.curr)}</td>
-        <td class="num ${updownCls(r.delta)}">${updown(r.delta)} ${pct100(
-        Math.abs(r.delta),
-        0
-      )}</td>
-      </tr>`
-    )
-    .join("");
-
+  const l0 = esc(labels?.[0] ?? "");
+  const l1 = esc(labels?.[1] ?? "");
   return `
-    <div class="card">
-      <div class="table-wrap">
-        <table class="cmp">
-          ${head}
-          <tbody>${body}</tbody>
-        </table>
-      </div>
-    </div>`;
+  <div class="sheet">
+    <div class="card-title">${esc(title)}</div>
+    <div class="table-wrap">
+      <table class="cmp">
+        <thead>
+          <tr>
+            <th width="50%">${esc(title)}</th>
+            <th>${l0}</th>
+            <th>${l1}</th>
+            <th>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(rows || [])
+            .map((r) => {
+              const up = (r.delta || 0) >= 0;
+              return `<tr>
+                <td>${esc(r.name || "")}</td>
+                <td class="num">${num(r.prev)}</td>
+                <td class="num">${num(r.curr)}</td>
+                <td class="${up ? "up" : "down"}">${up ? "▲" : "▼"} ${pct(
+                Math.abs(r.delta || 0),
+                0
+              )}</td>
+              </tr>`;
+            })
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 function renderAllTopTables(top) {
   return `
   <section class="sheet">
-    <div class="card head red">ТОП Лавлагаа</div>
     ${renderTopTableBlock("ТОП Лавлагаа", top.labels, top.groups["Лавлагаа"])}
     <div class="spacer16"></div>
-
-    <div class="card head red">ТОП Үйлчилгээ</div>
     ${renderTopTableBlock("ТОП Үйлчилгээ", top.labels, top.groups["Үйлчилгээ"])}
     <div class="spacer16"></div>
-
-    <div class="card head red">ТОП Гомдол</div>
     ${renderTopTableBlock("ТОП Гомдол", top.labels, top.groups["Гомдол"])}
   </section>`;
 }
 
-function buildHtml(payload, cssText) {
-  const libs = CONFIG.JS_LIBS.map((s) => `<script src="${s}"></script>`).join(
-    "\n"
-  );
-
-  const totPrev =
-    payload.prevCat["Лавлагаа"] +
-    payload.prevCat["Үйлчилгээ"] +
-    payload.prevCat["Гомдол"];
-  const totCurr =
-    payload.currCat["Лавлагаа"] +
-    payload.currCat["Үйлчилгээ"] +
-    payload.currCat["Гомдол"];
-  const totDelta = totPrev > 0 ? (totCurr - totPrev) / totPrev : 0;
-
-  const cG = payload.currCat["Гомдол"];
-  const pG = payload.prevCat["Гомдол"];
-  const gDelta = pG > 0 ? (cG - pG) / pG : 0;
-
-  const mini = payload.mini;
-
-  const extraCSS = `
-    body{font-family:Arial,Helvetica,sans-serif}
-    .sheet{margin-top:16px}
-    .grid{display:grid;gap:16px}
-    .grid-2{grid-template-columns:1.2fr .8fr}
-    .grid-1-1{grid-template-columns:1fr 1fr}
-    .card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;break-inside:avoid}
-    .head{font-weight:700}
-    .red{background:#0ea5e9;color:#fff;padding:10px 12px;border:none}
-    .bullet{margin:6px 0 0 18px;padding:0}
-    .bullet li{margin:6px 0}
-    table.cmp{width:100%;border-collapse:collapse;font-size:12.5px}
-    table.cmp th, table.cmp td{border:1px solid #e5e7eb;padding:6px 8px;vertical-align:top}
-    table.cmp thead th{background:#e0f2fe}
-    td.num{text-align:right;white-space:nowrap}
-    .kpi{font-weight:700}
-    .mini-row{display:flex;align-items:center;gap:8px}
-    .badge{display:inline-block;padding:2px 6px;border-radius:6px;color:#fff;font-size:11px}
-    .badge.up{background:#16a34a}.badge.down{background:#ef4444}
-    .footer{margin-top:24px;color:#6b7280;font-size:11px}
+function renderLayout({
+  month4,
+  weeks4,
+  mini: miniData,
+  prevCat,
+  currCat,
+  top,
+}) {
+  // Value labels plugin (хоёр чартад ашиглана)
+  const valueLabelPluginCode = `
+    const ValueLabelPlugin = {
+      id: 'value-labels',
+      afterDatasetsDraw(chart){
+        const { ctx, data } = chart;
+        ctx.save();
+        ctx.font = '11px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+        ctx.fillStyle = '#111';
+        ctx.textAlign = 'center';
+        (data.datasets||[]).forEach((ds,di)=>{
+          const meta = chart.getDatasetMeta(di);
+          (ds.data||[]).forEach((v,i)=>{
+            const el = meta.data?.[i];
+            if(!el || v==null) return;
+            const p = el.tooltipPosition ? el.tooltipPosition() : {x:el.x,y:el.y};
+            const y = chart.config.type==='bar' ? p.y-6 : p.y-8;
+            ctx.fillText(String(v), p.x, y);
+          });
+        });
+        ctx.restore();
+      }
+    };
+    window.ValueLabelPlugin = ValueLabelPlugin;
   `;
 
-  const miniBadge = (prev, curr) => {
-    const base = prev > 0 ? prev : curr || 1;
-    const d = (curr - prev) / base;
-    const cls = d >= 0 ? "up" : "down";
-    return `<span class="badge ${cls}">${pct100(Math.abs(d), 0)}</span>`;
-  };
+  const lavPrev = prevCat["Лавлагаа"] || 0,
+    lavCurr = currCat["Лавлагаа"] || 0;
+  const gomPrev = prevCat["Гомдол"] || 0,
+    gomCurr = currCat["Гомдол"] || 0;
+  const uilPrev = prevCat["Үйлчилгээ"] || 0,
+    uilCurr = currCat["Үйлчилгээ"] || 0;
+  const totPrev = lavPrev + gomPrev + uilPrev;
+  const totCurr = lavCurr + gomCurr + uilCurr;
+  const totDelta = totPrev ? (totCurr - totPrev) / totPrev : 0;
 
-  return `<!DOCTYPE html>
+  // 4 сарын Line
+  const lineCard = `
+  <div class="sheet">
+    <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн ${
+      month4.labels.length
+    } сараар/</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="secMonths"></canvas></div>
+  </div>
+  <script>(function(){
+    ${valueLabelPluginCode}
+    new Chart(document.getElementById('secMonths').getContext('2d'),{
+      type:'line',
+      data:{ labels:${JSON.stringify(
+        month4.labels
+      )}, datasets:[{ label:'', data:${JSON.stringify(
+    month4.data
+  )}, tension:.3, pointRadius:3 }]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, 'value-labels':{} }, scales:{ y:{ beginAtZero:true } } },
+      plugins:[window.ValueLabelPlugin]
+    });
+  })();</script>`;
+
+  // 4 долоо хоногийн Bar
+  const dataU =
+    (weeks4.series || []).find((s) => s.name === "Үйлчилгээ")?.data || [];
+  const dataG =
+    (weeks4.series || []).find((s) => s.name === "Гомдол")?.data || [];
+  const dataL =
+    (weeks4.series || []).find((s) => s.name === "Лавлагаа")?.data || [];
+  const weeksCard = `
+  <div class="sheet">
+    <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн ${
+      weeks4.labels.length
+    } долоо хоногоор/</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="secWeeks"></canvas></div>
+    <div class="kpi-note">
+      • Тайлант хугацаанд нийт <b>${num(totCurr)}</b>.
+      • Өмнөхтэй харьцуулахад <b class="${totDelta >= 0 ? "up" : "down"}">${pct(
+    Math.abs(totDelta),
+    0
+  )}</b> ${totDelta >= 0 ? "өссөн" : "буурсан"}.
+    </div>
+  </div>
+  <script>(function(){
+    new Chart(document.getElementById('secWeeks').getContext('2d'),{
+      type:'bar',
+      data:{ labels:${JSON.stringify(weeks4.labels)}, datasets:[
+        {label:'Үйлчилгээ', data:${JSON.stringify(dataU)}},
+        {label:'Гомдол',   data:${JSON.stringify(dataG)}},
+        {label:'Лавлагаа', data:${JSON.stringify(dataL)}}
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'bottom'}, 'value-labels':{} }, scales:{ y:{ beginAtZero:true } } },
+      plugins:[window.ValueLabelPlugin]
+    });
+  })();</script>`;
+
+  // Mini charts
+  const miniSection = `
+  <div class="sheet">
+    <div class="grid grid-2">
+      <div>
+        <div class="card-title">ЛАВЛАГАА – ${num(lavCurr)} (${pct(
+    lavCurr / (totCurr || 1),
+    0
+  )})</div>
+        <div class="chart-wrap" style="height:140px"><canvas id="miniLav"></canvas></div>
+      </div>
+      <div>
+        <div class="card-title">ҮЙЛЧИЛГЭЭ – ${num(uilCurr)} (${pct(
+    uilCurr / (totCurr || 1),
+    0
+  )})</div>
+        <div class="chart-wrap" style="height:140px"><canvas id="miniUil"></canvas></div>
+      </div>
+    </div>
+    <div class="sheet">
+      <div class="card-title">ГОМДОЛ – ${num(gomCurr)} (${pct(
+    gomCurr / (totCurr || 1),
+    0
+  )})</div>
+      <div class="chart-wrap" style="height:140px"><canvas id="miniGom"></canvas></div>
+    </div>
+  </div>
+  <script>(function(){
+    const labels = ${JSON.stringify(miniData.labels || [])};
+    const mk = (id, arr) => new Chart(document.getElementById(id).getContext('2d'),{
+      type:'bar',
+      data:{ labels, datasets:[{ label:'Prev/Curr', data:arr }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, 'value-labels':{} }, scales:{ y:{ beginAtZero:true } } },
+      plugins:[window.ValueLabelPlugin]
+    });
+    mk('miniLav', ${JSON.stringify([
+      miniData.lavlagaa?.prev || 0,
+      miniData.lavlagaa?.curr || 0,
+    ])});
+    mk('miniUil', ${JSON.stringify([
+      miniData.uilchilgee?.prev || 0,
+      miniData.uilchilgee?.curr || 0,
+    ])});
+    mk('miniGom', ${JSON.stringify([
+      miniData.gomdol?.prev || 0,
+      miniData.gomdol?.curr || 0,
+    ])});
+  })();</script>`;
+
+  return `${lineCard}${weeksCard}${miniSection}${renderAllTopTables(top)}`;
+}
+
+function wrapHtml(bodyHtml, coverHtml) {
+  const css = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
+  return `<!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <style>${cssText}\n${extraCSS}</style>
-  ${libs}
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>${css}</style>
   <title>Ard Security Report</title>
 </head>
 <body>
-
-  <div class="card head red">АРД СЕКЮРИТИЗ</div>
-
-  <!-- Top row -->
-  <section class="sheet">
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="card head red">НИЙТ ХАНДАЛТ /Сүүлийн 4 сараар/</div>
-        <div id="sec-handalt" style="height:230px;margin-top:8px"></div>
-      </div>
-      <div class="card">
-        <div class="card head red">НИЙТ БҮРТГЭЛ /Сүүлийн 4 долоо хоногоор/</div>
-        <div id="sec-week" style="height:230px;margin-top:8px"></div>
-        <ul class="bullet">
-          <li>Тайлант хугацаанд <span class="kpi">${num(
-            totCurr
-          )}</span> харилцагчид үйлчилсэн бөгөөд өмнөх 7 хоногоос <span class="${
-    totDelta >= 0 ? "up" : "down"
-  }">${pct100(totDelta, 1)}</span> ${totDelta >= 0 ? "өссөн" : "буурсан"}.</li>
-          <li>Нийт <span class="kpi">${num(
-            cG
-          )}</span> гомдол бүртгэгдсэн бөгөөд өмнөх 7 хоногтой харьцуулахад <span class="${
-    gDelta >= 0 ? "up" : "down"
-  }">${pct100(gDelta, 0)}</span> ${gDelta >= 0 ? "өссөн" : "буурсан"}.</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- Mini bars -->
-  <section class="sheet">
-    <div class="grid grid-1-1">
-      <div class="card">
-        <div class="mini-row">
-          <h3 style="margin:0">ЛАВЛАГАА – ${num(
-            payload.currCat["Лавлагаа"]
-          )} (${pct100(payload.currCat["Лавлагаа"] / (totCurr || 1), 0)})</h3>
-          ${miniBadge(mini.lavlagaa.prev, mini.lavlagaa.curr)}
-        </div>
-        <div id="sec-lavlagaa" style="height:120px"></div>
-      </div>
-      <div class="card">
-        <div class="mini-row">
-          <h3 style="margin:0">ҮЙЛЧИЛГЭЭ – ${num(
-            payload.currCat["Үйлчилгээ"]
-          )} (${pct100(payload.currCat["Үйлчилгээ"] / (totCurr || 1), 0)})</h3>
-          ${miniBadge(mini.uilchilgee.prev, mini.uilchilgee.curr)}
-        </div>
-        <div id="sec-uilchilgee" style="height:120px"></div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:12px">
-      <div class="mini-row">
-        <h3 style="margin:0">ГОМДОЛ – ${num(
-          payload.currCat["Гомдол"]
-        )} (${pct100(payload.currCat["Гомдол"] / (totCurr || 1), 0)})</h3>
-        ${miniBadge(mini.gomdol.prev, mini.gomdol.curr)}
-      </div>
-      <div id="sec-gomdol" style="height:120px"></div>
-    </div>
-  </section>
-
-  ${renderAllTopTables(payload.top)}
-
+  <div class="header"></div>
+  ${coverHtml}
+  ${bodyHtml}
   <div class="footer">Автоматаар бэлтгэсэн тайлан (Ard Securities)</div>
-
-  <script>
-    (function(){
-      // 4 months
-      new ApexCharts(document.querySelector("#sec-handalt"), {
-        series: [{ name:"Нийт", data: ${JSON.stringify(payload.month4.data)} }],
-        chart: { height: 220, type: "line", toolbar: { show:false } },
-        dataLabels: { enabled: true },
-        stroke: { curve: "straight", width: 3 },
-        markers: { size: 4 },
-        grid: { row:{ colors:["#f3f3f3","transparent"], opacity: .5 } },
-        xaxis: { categories: ${JSON.stringify(payload.month4.labels)} },
-        yaxis: { min: 0 }
-      }).render();
-
-      // 4 weeks stacked
-      new ApexCharts(document.querySelector("#sec-week"), {
-        chart: { type:"bar", height:220, stacked:false, toolbar:{show:false} },
-        plotOptions: { bar:{ horizontal:false, columnWidth:"55%", endingShape:"rounded" } },
-        dataLabels: { enabled:true, style:{colors:["#fff"]}, background:{ enabled:true, foreColor:"#000", padding:4, borderRadius:4, borderWidth:1, borderColor:"#1E90FF", opacity:.9 } },
-        stroke: { show:true, width:2, colors:["transparent"] },
-        series: ${JSON.stringify(payload.weeks4.series)},
-        xaxis: { categories: ${JSON.stringify(payload.weeks4.labels)} },
-        fill: { opacity:1 },
-        legend: { position:"bottom" }
-      }).render();
-
-      // mini bars
-      const mkMini = (el, cats, vals)=> new ApexCharts(document.querySelector(el), {
-        series: [{ name:"Value", data: vals }],
-        chart: { type:"bar", height:110, toolbar:{show:false} },
-        plotOptions: { bar:{ horizontal:false, columnWidth:"70%", borderRadius:6 } },
-        dataLabels: { enabled:true },
-        xaxis: { categories: cats },
-        yaxis: { min:0 },
-        colors: ["#546E7A"]
-      }).render();
-
-      const mini = ${JSON.stringify(payload.mini)};
-      mkMini("#sec-lavlagaa", mini.labels, [mini.lavlagaa.prev, mini.lavlagaa.curr]);
-      mkMini("#sec-uilchilgee", mini.labels, [mini.uilchilgee.prev, mini.uilchilgee.curr]);
-      mkMini("#sec-gomdol", mini.labels, [mini.gomdol.prev, mini.gomdol.curr]);
-    })();
-  </script>
 </body>
 </html>`;
 }
@@ -680,11 +723,15 @@ function buildHtml(payload, cssText) {
 async function htmlToPdf(html, outPath) {
   const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    defaultViewport: { width: 1600, height: 1000, deviceScaleFactor: 2 },
+    defaultViewport: { width: 1400, height: 900, deviceScaleFactor: 2 },
   });
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.waitForFunction(
+      () => window.Chart && document.querySelectorAll("canvas").length >= 2,
+      { timeout: 10000 }
+    );
     await page.emulateMediaType("screen");
     await page.pdf({
       path: outPath,
@@ -754,7 +801,6 @@ async function runOnce() {
   if (!fs.existsSync(CONFIG.OUT_DIR))
     fs.mkdirSync(CONFIG.OUT_DIR, { recursive: true });
 
-  // TOP хүснэгтүүд
   const top = buildTopFromTwoFiles(
     CONFIG.PREV_FILE,
     CONFIG.CURR_FILE,
@@ -763,7 +809,6 @@ async function runOnce() {
     10
   );
 
-  // prev/curr ангиллын нийлбэр
   const prevCat = countByCategoryWithinFile(
     CONFIG.PREV_FILE,
     CONFIG.APP_SHEET,
@@ -775,6 +820,26 @@ async function runOnce() {
     CONFIG.COMPANY_FILTER
   );
 
+  // 4 months — SMART (зөв функц!!)
+  let month4 = month4FromASC_SMART(CONFIG.CURR_FILE, CONFIG.ASC_SHEET) || {
+    labels: [],
+    data: [],
+  };
+
+  // 4 weeks — ASC > fallback
+  let weeks4 =
+    last4WeeksByCategoryFromASC(CONFIG.CURR_FILE, CONFIG.ASC_SHEET) ||
+    lastWeeksFromPrevCurrFallback(
+      CONFIG.PREV_FILE,
+      CONFIG.CURR_FILE,
+      CONFIG.APP_SHEET,
+      CONFIG.COMPANY_FILTER
+    );
+
+  // Гомдлын дата override
+  weeks4 = overrideGomdolFromSheet1(weeks4);
+
+  // mini
   const mini = {
     labels: [
       parseWeekFromFilename(CONFIG.PREV_FILE)?.raw || "Prev",
@@ -791,42 +856,16 @@ async function runOnce() {
     gomdol: { prev: prevCat["Гомдол"] || 0, curr: currCat["Гомдол"] || 0 },
   };
 
-  // 4 months — ASC > fallback (Osticket monthly from app)
-  let month4 = month4FromASC(
-    CONFIG.CURR_FILE,
-    CONFIG.ASC_SHEET,
-    dayjs().year()
-  );
-  if (!month4) month4 = { labels: [], data: [] }; // ASC заавал байх ёстой — хоосон бол график цулгуй
+  const cover = renderCover({
+    company: "АРД СЕКЮРИТИЗ",
+    periodText: `${parseWeekFromFilename(CONFIG.PREV_FILE)?.raw || ""} – ${
+      parseWeekFromFilename(CONFIG.CURR_FILE)?.raw || ""
+    }`,
+  });
 
-  // 4 weeks — ASC > fallback (prev/curr)
-  let weeks4 = last4WeeksByCategoryFromASC(CONFIG.CURR_FILE, CONFIG.ASC_SHEET);
-  if (!weeks4)
-    weeks4 = lastWeeksFromPrevCurrFallback(
-      CONFIG.PREV_FILE,
-      CONFIG.CURR_FILE,
-      CONFIG.APP_SHEET,
-      CONFIG.COMPANY_FILTER
-    );
-
-  const wkCurr =
-    parseWeekFromFilename(CONFIG.CURR_FILE)?.raw || "Одоогийн 7 хоног";
-  const wkPrev =
-    parseWeekFromFilename(CONFIG.PREV_FILE)?.raw || "Өмнөх 7 хоног";
-
-  const cssText = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
-  const html = buildHtml(
-    {
-      weekPrev: wkPrev,
-      weekCurr: wkCurr,
-      month4,
-      weeks4,
-      mini,
-      top,
-      prevCat,
-      currCat,
-    },
-    cssText
+  const html = wrapHtml(
+    renderLayout({ month4, weeks4, mini, prevCat, currCat, top }),
+    cover
   );
 
   const monday = dayjs().tz(CONFIG.TIMEZONE).startOf("week").add(1, "day");
@@ -866,8 +905,7 @@ function startScheduler() {
 }
 
 // Entry
-const runNow = process.argv.includes("--once");
-if (runNow) {
+if (process.argv.includes("--once")) {
   runOnce().catch((e) => {
     console.error(e);
     process.exit(1);

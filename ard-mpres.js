@@ -1,5 +1,5 @@
 // ard-mpers.js — Lotto (last 4 months from "now") + Osticket1 (prev/curr week) → HTML → PDF → Email
-// --------------------------------------------------------------------------------
+// ────────────────────────────────────────────────────────────────
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
@@ -20,35 +20,36 @@ dayjs.extend(tz);
 const CONFIG = {
   TIMEZONE: process.env.TIMEZONE || "Asia/Ulaanbaatar",
 
-  PREV_FILE: process.env.CURR_FILE || "./ARD 09.22-09.28.xlsx",
-  CURR_FILE: process.env.PREV_FILE || "./ARD 09.29-10.05.xlsx",
+  PREV_FILE: process.env.PREV_FILE || "./ARD 09.22-09.28.xlsx",
+  CURR_FILE: process.env.CURR_FILE || "./ARD 09.29-10.05.xlsx",
+  GOMDOL_FILE: "./gomdol-weekly.xlsx",
 
-  APP_SHEET: process.env.APP_SHEET || "Osticket1", // түүхий мөрүүд (7 хоног)
-  MPERS_SHEET: process.env.MPERS_SHEET || "Lotto", // саруудын хүснэгт (social reach)
-
-  OUT_DIR: process.env.OUT_DIR || "./out",
-  REPORT_TITLE: process.env.REPORT_TITLE || "МПЕРС ХХК — 7 хоногийн тайлан",
-  SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[Ard MPERS Weekly]",
-
-  EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "true") === "true",
-  SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "false") === "true",
-
-  CSS_FILE: process.env.CSS_FILE || "./css/template.css",
+  // Sheets
+  APP_SHEET: process.env.APP_SHEET || "Osticket1", // raw rows (weekly)
+  MPERS_SHEET: process.env.MPERS_SHEET || "Lotto", // months table (social reach)
   COMPANY_FILTER: process.env.COMPANY_FILTER || "Ард МПЕРС",
 
-  JS_LIBS: ["https://cdn.jsdelivr.net/npm/apexcharts"],
+  // PDF / Email
+  OUT_DIR: process.env.OUT_DIR || "./out",
+  CSS_FILE: process.env.CSS_FILE || "./css/template.css",
+  REPORT_TITLE: process.env.REPORT_TITLE || "МПЕРС ХХК — 7 хоногийн тайлан",
+  SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[Ard MPERS Weekly]",
+  EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "true") === "true",
+  SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "false") === "true",
 };
 
 // ────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────
+const esc = (s) =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const nnum = (v) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
 const pad2 = (n) => String(n).padStart(2, "0");
-const norm = (s) =>
-  String(s || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
 
 function parseWeekFromFilename(p) {
   const base = path.basename(p);
@@ -79,18 +80,16 @@ function parseExcelDate(v) {
 }
 function inferYearFromSheet(ws, dateColIndexes = []) {
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
-  const sample = [];
-  for (let r = 1; r < Math.min(rows.length, 120); r++) {
+  for (let r = 1; r < Math.min(rows.length, 200); r++) {
     const row = rows[r] || [];
     for (const c of dateColIndexes) {
       if (c >= 0 && row[c] != null) {
         const d = parseExcelDate(row[c]);
-        if (d) sample.push(d.toDate());
+        if (d) return d.year();
       }
     }
   }
-  const years = sample.map((d) => dayjs(d).year());
-  return years.length ? years[0] : dayjs().year();
+  return dayjs().year();
 }
 function getColIdx(headers, patterns) {
   for (let i = 0; i < headers.length; i++) {
@@ -131,7 +130,6 @@ function countWeekFromOsticketByCategoryAndChannel(file, sheetName, company) {
   const start = wk ? dayjs(makeYmd(year, wk.m1, wk.d1)).startOf("day") : null;
   const end = wk ? dayjs(makeYmd(year, wk.m2, wk.d2)).endOf("day") : null;
 
-  // Тоолно (Үйлчилгээг тоолж хадгална, UI-д хэрэглэхгүй)
   const cats = { Лавлагаа: 0, Гомдол: 0, Үйлчилгээ: 0 };
   const chan = { Phone: 0, Social: 0 };
   const top = { Лавлагаа: new Map(), Гомдол: new Map() };
@@ -202,7 +200,7 @@ function prevCurrCompare(filePrev, fileCurr, sheetName, company) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Lotto — “Нийт хандалт / Сүүлийн 4 сар” (rolling 4)
+/** Lotto — “Нийт хандалт / Сүүлийн 4 сар” (rolling 4 from now) */
 // ────────────────────────────────────────────────────────────────
 function month4FromLotto(file, sheetName) {
   const wb = xlsx.readFile(file, { cellDates: true });
@@ -227,9 +225,9 @@ function month4FromLotto(file, sheetName) {
     return m ? +m : null;
   };
 
-  // Толгойн мөрөөс жилүүдийг цуглуулна
+  // Толгойн мөр дэх жилүүд
   let headerRow = -1;
-  const yearCols = new Map(); // year -> col
+  const yearCols = new Map();
   for (let r = 0; r < Math.min(rows.length, 80); r++) {
     const row = rows[r] || [];
     for (let c = 0; c < row.length; c++) {
@@ -242,7 +240,7 @@ function month4FromLotto(file, sheetName) {
   }
   if (headerRow < 0 || yearCols.size === 0) return { labels: [], data: [] };
 
-  // Сарын нэр байрлах баганыг олно (ихэвчлэн A/B)
+  // Сарын шошго байрлах багана
   let monthCol = 0;
   outer: for (const cand of [0, 1]) {
     for (let r = headerRow + 1; r < rows.length; r++) {
@@ -275,7 +273,7 @@ function month4FromLotto(file, sheetName) {
     }
   }
 
-  // Одоогийн огнооноос 4 сар (M-3..M)
+  // Одоогоос 4 сар (M-3..M)
   const now = dayjs().tz(CONFIG.TIMEZONE);
   const seq = [];
   for (let i = 3; i >= 0; i--) {
@@ -293,24 +291,38 @@ function month4FromLotto(file, sheetName) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// HTML
+// HTML (Chart.js, plugin-гүй — тоог canvas дээр бичнэ)
 // ────────────────────────────────────────────────────────────────
-const pct100 = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
 const num = (n) => Number(n || 0).toLocaleString();
+const pct = (x) => `${(x * 100).toFixed(0)}%`;
+
+function renderCover({ company, periodText }) {
+  return `
+  <section class="hero" style="margin-bottom:16px">
+    <div style="background:linear-gradient(135deg,#d8b76a,#f0d9a6);
+                border-radius:12px;padding:24px;display:flex;justify-content:space-between;align-items:center;min-height:200px;">
+      <div style="background:#fff;border-radius:16px;padding:18px 22px;display:inline-block">
+        <div style="font-weight:800;font-size:26px;letter-spacing:.5px;color:#b38b3c">ARD</div>
+        <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
+      </div>
+      <div style="color:#fff;text-align:right;padding:8px 16px">
+        <div style="font-size:32px;font-weight:800;line-height:1.1">${esc(
+          company
+        )}</div>
+        <div style="opacity:.9;margin-top:8px">${esc(periodText || "")}</div>
+      </div>
+    </div>
+  </section>`;
+}
 
 function tableBlock(title, labels, rows) {
   return `
-<div class="card">
-  <div class="table-wrap">
+  <div class="card">
+    <div class="card-title">${esc(title)}</div>
     <table class="cmp">
-      <thead>
-        <tr>
-          <th width="50%">${title}</th>
-          <th>${labels[0]}</th>
-          <th>${labels[1]}</th>
-          <th>%</th>
-        </tr>
-      </thead>
+      <thead><tr><th>Туслах ангилал</th><th>${labels[0]}</th><th>${
+    labels[1]
+  }</th><th>%</th></tr></thead>
       <tbody>
         ${rows
           .map((r) => {
@@ -318,227 +330,181 @@ function tableBlock(title, labels, rows) {
             const d = (r.curr - r.prev) / base;
             const up = d >= 0;
             return `<tr>
-              <td>${r.name}</td>
-              <td class="num">${num(r.prev)}</td>
-              <td class="num">${num(r.curr)}</td>
-              <td class="num ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${pct100(
-              Math.abs(d),
-              0
+            <td>${esc(r.name)}</td>
+            <td class="num">${num(r.prev)}</td>
+            <td class="num">${num(r.curr)}</td>
+            <td class="num ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${pct(
+              Math.abs(d)
             )}</td>
-            </tr>`;
+          </tr>`;
           })
           .join("")}
       </tbody>
     </table>
-  </div>
-</div>`;
+  </div>`;
 }
 
-function buildHtml(payload, cssText) {
-  const libs = CONFIG.JS_LIBS.map((s) => `<script src="${s}"></script>`).join(
-    "\n"
-  );
+function renderLayout({ month4, compare }) {
+  const monthsLabels = month4.labels || [];
+  const monthsData = month4.data || [];
 
-  // Нийт бүртгэл = Лавлагаа + Гомдол
-  const lavPrev = payload.compare.catsPrev["Лавлагаа"] || 0;
-  const lavCurr = payload.compare.catsCurr["Лавлагаа"] || 0;
-  const gomPrev = payload.compare.catsPrev["Гомдол"] || 0;
-  const gomCurr = payload.compare.catsCurr["Гомдол"] || 0;
+  const lavPrev = compare.catsPrev["Лавлагаа"] || 0;
+  const lavCurr = compare.catsCurr["Лавлагаа"] || 0;
+  const gomPrev = compare.catsPrev["Гомдол"] || 0;
+  const gomCurr = compare.catsCurr["Гомдол"] || 0;
 
-  const currTotal = lavCurr + gomCurr;
   const prevTotal = lavPrev + gomPrev;
-  const totDelta = prevTotal ? (currTotal - prevTotal) / prevTotal : 0;
+  const currTotal = lavCurr + gomCurr;
+  const delta = prevTotal ? (currTotal - prevTotal) / prevTotal : 0;
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<style>
-${cssText}
-/* ==== Gold Theme (charts untouched) ==== */
-:root{
-  --gold-50:#fffbeb;
-  --gold-100:#fef3c7;
-  --gold-150:#fbe9b6;
-  --gold-200:#f1d79a;
-  --gold-300:#e2c074;
-  --gold-400:#d4a941;
-  --gold-500:#c69026;
-  --gold-600:#a87a1a;
-  --gray-200:#e5e7eb; --gray-500:#6b7280; --gray-700:#374151;
-}
+  // Canvas дээр тоо бичих жижиг туслах функц (plugin биш)
+  const drawValuesFn = `
+    function drawValues(chart){
+      const {ctx} = chart;
+      ctx.save();
+      ctx.font = '12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+      ctx.fillStyle = '#111';
+      ctx.textAlign = 'center';
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        (ds.data || []).forEach((v, i) => {
+          if (v == null) return;
+          const el = meta.data[i];
+          if (!el) return;
+          const pos = el.tooltipPosition ? el.tooltipPosition() : {x: el.x, y: el.y};
+          ctx.fillText(String(v), pos.x, pos.y - 6);
+        });
+      });
+      ctx.restore();
+    }`;
 
-body{font-family:Arial,Helvetica,sans-serif}
-.sheet{margin-top:16px}
-.grid{display:grid;gap:16px}
-.grid-2{grid-template-columns:1.2fr .8fr}
-.grid-1-1{grid-template-columns:1fr 1fr}
-.grid-1-1-1{grid-template-columns:1fr 1fr 1fr}
+  const lineCard = `
+  <div class="card" style="height: 500px; margin-bottom: 4rem;">
+    <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн ${
+      monthsLabels.length
+    } сараар/</div>
+    <canvas id="lottoLine"></canvas>
+  </div>
+  <script>(function(){
+    ${drawValuesFn}
+    const ctx = document.getElementById('lottoLine').getContext('2d');
+    const ch  = new Chart(ctx,{
+      type:'line',
+      data:{ labels:${JSON.stringify(monthsLabels)},
+        datasets:[{ label:'', data:${JSON.stringify(
+          monthsData
+        )}, tension:.3, pointRadius:4 }]},
+      options:{ animation:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } }
+    });
+    setTimeout(()=>drawValues(ch),0);
+  })();</script>`;
 
-.card{
-  background:#fff;border:1px solid var(--gray-200);
-  border-radius:12px;padding:12px;break-inside:avoid;
-  box-shadow:0 4px 12px rgba(0,0,0,.04);
-}
-
-/* Том гарчиг/тендер */
-.brand{
-  background:linear-gradient(135deg,#d8b76a 0%, #f0d9a6 50%, #d1b076 100%);
-  color:#fff;padding:14px 16px;border:none;border-radius:12px;
-  font-weight:700; letter-spacing:.2px;
-}
-
-/* Жижиг хэсгийн толгой—илүү зөөлөн алтлаг */
-.section-head{
-  background:linear-gradient(135deg,#f8e7b8 0%, #f2d89a 100%);
-  color:#7a5b21; padding:10px 12px; border-radius:10px; font-weight:700;
-}
-
-/* Хүснэгтүүд */
-table.cmp{width:100%;border-collapse:collapse;font-size:12.5px}
-table.cmp th, table.cmp td{border:1px solid var(--gold-200);padding:6px 8px;vertical-align:top}
-table.cmp thead th{
-  background:linear-gradient(180deg,#fff7e1 0%, #fde9b8 100%);
-  color:#7a5b21
-}
-td.num{text-align:right;white-space:nowrap}
-.up{color:#16a34a}.down{color:#b91c1c}
-
-.footer{margin-top:24px;color:#6b7280;font-size:11px}
-.bullet{margin:6px 0 0 18px;padding:0}
-.bullet li{margin:6px 0}
-</style>
-${libs}
-<title>Ard MPERS Report</title>
-</head>
-<body>
-
-<!-- Том баннер маягийн толгой -->
-<div class="brand" style="height:auto">
-  МПЕРС ХХК
-</div>
-
-<section class="sheet">
-  <div class="grid grid-2">
-    <div class="card">
-      <div class="section-head">НИЙТ ХАНДАЛТ /Сүүлийн 4 сараар/</div>
-      <div id="mpers-handalt" style="height:230px;margin-top:8px"></div>
-    </div>
-    <div class="card">
-      <div class="section-head">НИЙТ БҮРТГЭЛ /Сүүлийн 2 долоо хоногоор/</div>
-      <div id="mpers-week" style="height:230px;margin-top:8px"></div>
-      <ul class="bullet">
-        <li>Тайлант 7 хоногт <b>${num(
-          currTotal
-        )}</b> бүртгэл хийгдсэн. Өмнөх 7 хоногоос
-          <span class="${totDelta >= 0 ? "up" : "down"}">${(
-    totDelta * 100
-  ).toFixed(0)}%</span>
-          ${totDelta >= 0 ? "өссөн" : "буурсан"}.</li>
+  const weeklyCard = `
+  <div class="card">
+    <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн 2 долоо хоног/</div>
+    <div class="grid">
+      <canvas id="weekBar"></canvas>
+      <ul style="margin:10px 0 0 18px;line-height:1.6">
+        <li>Тайлант 7 хоногт нийт <b>${num(currTotal)}</b>.</li>
+        <li>Өмнөх 7 хоногоос <b>${
+          delta >= 0 ? "өссөн" : "буурсан"
+        }</b>: <b>${pct(Math.abs(delta))}</b>.</li>
       </ul>
     </div>
   </div>
-</section>
+  <script>(function(){
+    ${drawValuesFn}
+    const ctx = document.getElementById('weekBar').getContext('2d');
+    const ch  = new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:${JSON.stringify(compare.labels)},
+        datasets:[
+          {label:'Лавлагаа', data:[${lavPrev}, ${lavCurr}]},
+          {label:'Гомдол',   data:[${gomPrev}, ${gomCurr}]}
+        ]},
+      options:{ animation:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{ beginAtZero:true } } }
+    });
+    setTimeout(()=>drawValues(ch),0);
+  })();</script>`;
 
-<section class="sheet">
-  <div class="grid grid-1-1-1">
-    <div class="card">
-      <h3 style="margin:0;color:#7a5b21">СУВГААР (Phone/Social)</h3>
-      <div id="mpers-chan" style="height:150px"></div>
+  const chanCard = `
+  <div class="card">
+    <div class="card-title">СУВГААР (Phone / Social)</div>
+    <canvas id="chanBar"></canvas>
+  </div>
+  <script>(function(){
+    ${drawValuesFn}
+    const ctx = document.getElementById('chanBar').getContext('2d');
+    const ch  = new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels:${JSON.stringify(["Phone", "Social"])},
+        datasets:[
+          {label:${JSON.stringify(compare.labels[0])}, data:${JSON.stringify([
+    compare.chanPrev.Phone || 0,
+    compare.chanPrev.Social || 0,
+  ])}},
+          {label:${JSON.stringify(compare.labels[1])}, data:${JSON.stringify([
+    compare.chanCurr.Phone || 0,
+    compare.chanCurr.Social || 0,
+  ])}}
+        ]},
+      options:{ animation:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{ beginAtZero:true } } }
+    });
+    setTimeout(()=>drawValues(ch),0);
+  })();</script>`;
+
+  const topLavTable = tableBlock(
+    "ТОП Лавлагаа",
+    compare.labels,
+    compare.topLav
+  );
+  const topGomTable = tableBlock("ТОП Гомдол", compare.labels, compare.topGom);
+
+  return `
+  <section>
+    <div class="grid">
+      ${lineCard}
+      ${weeklyCard}
     </div>
-    <div class="card">
-      <h3 style="margin:0;color:#7a5b21">ЛАВЛАГАА</h3>
-      <div id="mpers-mini-lav" style="height:150px"></div>
+    <div class="grid grid-1-1" style="margin-top:8px">
+      ${chanCard}
+      <div></div>
     </div>
-    <div class="card">
-      <h3 style="margin:0;color:#7a5b21">ГОМДОЛ</h3>
-      <div id="mpers-mini-gom" style="height:150px"></div>
+    <div class="grid grid-1" style="margin-top:8px">
+      ${topLavTable}
+      ${topGomTable}
+    </div>
+  </section>`;
+}
+
+function wrapHtml(bodyHtml) {
+  const css = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>${css}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:12px;page-break-inside:avoid}
+    .card-title{font-weight:700;margin-bottom:6px}
+    table.cmp{table-layout:fixed;width:100%;border-collapse:collapse;font-size:12.5px}
+    table.cmp th,table.cmp td{border:1px solid #e5e7eb;padding:6px 8px;vertical-align:top}
+    table.cmp thead th{background:#fff8e1}
+    td.num{text-align:right;white-space:nowrap}
+    .up{color:#16a34a}.down{color:#ef4444}
+  </style>
+</head>
+<body>
+ <div class="container py-3">
+    <div class="row g-3">
+      ${bodyHtml}
+      <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
     </div>
   </div>
-</section>
-
-<section class="sheet">
-  <div class="grid grid-1-1">
-    ${tableBlock(
-      "ТОП Лавлагаа",
-      payload.compare.labels,
-      payload.compare.topLav
-    )}
-    ${tableBlock("ТОП Гомдол", payload.compare.labels, payload.compare.topGom)}
-  </div>
-</section>
-
-<div class="footer">Автоматаар бэлтгэсэн тайлан (MPERS / Lotto)</div>
-
-<script>
-(function(){
-  // months (Lotto – last 4 months from now) — CHART COLORS NOT OVERRIDDEN
-  new ApexCharts(document.querySelector("#mpers-handalt"), {
-    series: [{ name:"Нийт", data: ${JSON.stringify(payload.month4.data)} }],
-    chart: { height: 220, type: "line", toolbar: { show:false } },
-    dataLabels: { enabled: true },
-    stroke: { curve: "straight", width: 3 },
-    markers: { size: 4 },
-    grid: { row:{ colors:["#f7f7f7","transparent"], opacity: .5 } },
-    xaxis: { categories: ${JSON.stringify(payload.month4.labels)} },
-    yaxis: { min: 0 }
-  }).render();
-
-  // weeks (prev vs curr) — Лавлагаа + Гомдол (NO custom colors)
-  new ApexCharts(document.querySelector("#mpers-week"), {
-    chart: { type:"bar", height:220, stacked:false, toolbar:{show:false} },
-    plotOptions: { bar:{ horizontal:false, columnWidth:"55%", endingShape:"rounded" } },
-    dataLabels: {
-      enabled:true,
-      style:{colors:["#fff"]},
-      background:{ enabled:true, foreColor:"#000", padding:4, borderRadius:4, borderWidth:1, borderColor:"#c8a968", opacity:.9 }
-    },
-    stroke: { show:true, width:2, colors:["transparent"] },
-    series: [
-      { name:"Гомдол",   data: [${gomPrev}, ${gomCurr}] },
-      { name:"Лавлагаа", data: [${lavPrev}, ${lavCurr}] }
-    ],
-    xaxis: { categories: ${JSON.stringify(payload.compare.labels)} },
-    fill: { opacity:1 },
-    legend: { position:"bottom" }
-  }).render();
-
-  // channel chart (Phone/Social) — prev vs curr (NO custom colors)
-  new ApexCharts(document.querySelector("#mpers-chan"), {
-    chart: { type:"bar", height:150, stacked:false, toolbar:{show:false} },
-    plotOptions: { bar:{ horizontal:false, columnWidth:"55%", borderRadius:6 } },
-    dataLabels: { enabled:true },
-    series: [
-      { name:${JSON.stringify(payload.compare.labels[0])},
-        data: ${JSON.stringify([
-          payload.compare.chanPrev.Phone || 0,
-          payload.compare.chanPrev.Social || 0,
-        ])} },
-      { name:${JSON.stringify(payload.compare.labels[1])},
-        data: ${JSON.stringify([
-          payload.compare.chanCurr.Phone || 0,
-          payload.compare.chanCurr.Social || 0,
-        ])} }
-    ],
-    xaxis: { categories: ${JSON.stringify(["Phone", "Social"])} },
-    legend: { position:"bottom" }
-  }).render();
-
-  // mini bars (Lavlagaa/Gomdol) (NO custom colors)
-  const mkMini = (el, vals) => new ApexCharts(document.querySelector(el), {
-    chart:{ type:"bar", height:150, toolbar:{show:false} },
-    plotOptions:{ bar:{ horizontal:false, columnWidth:"60%", borderRadius:8 } },
-    dataLabels:{ enabled:true },
-    series:[{ name:"Prev/Curr", data: vals }],
-    xaxis:{ categories: ${JSON.stringify(payload.compare.labels)} },
-    yaxis:{ min:0 }
-  }).render();
-  mkMini("#mpers-mini-lav", [${lavPrev}, ${lavCurr}]);
-  mkMini("#mpers-mini-gom", [${gomPrev}, ${gomCurr}]);
-})();
-</script>
-
 </body>
 </html>`;
 }
@@ -549,17 +515,16 @@ ${libs}
 async function htmlToPdf(html, outPath) {
   const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    defaultViewport: { width: 1600, height: 1000, deviceScaleFactor: 2 },
   });
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
+    // Chart.js болон дор хаяж 2 canvas бий эсэхийг шалгана
+    await page.waitForFunction(
+      () => window.Chart && document.querySelectorAll("canvas").length >= 2,
+      { timeout: 8000 }
+    );
     await page.emulateMediaType("screen");
-    // ApexCharts render хүлээе
-    await page
-      .waitForSelector(".apexcharts-svg", { timeout: 15000 })
-      .catch(() => {});
-    await new Promise((res) => setTimeout(res, 600));
     await page.pdf({
       path: outPath,
       format: "A4",
@@ -604,8 +569,14 @@ async function sendEmailWithPdf(pdfPath, subject) {
     from: process.env.FROM_EMAIL,
     to: process.env.RECIPIENTS,
     subject,
-    html: `<p>Сайн байна уу,</p><p>МПЕРС (Lotto) 7 хоногийн тайланг хавсаргав.</p><p style="color:#666;font-size:12px">Автоматаар илгээв.</p>`,
-    attachments: [{ filename: path.basename(pdfPath), path: pdfPath }],
+    html: `<p>Сайн байна уу,</p><p>МПЕРС 7 хоногийн тайланг хавсаргав.</p><p style="color:#666;font-size:12px">Автоматаар илгээв.</p>`,
+    attachments: [
+      {
+        filename: path.basename(pdfPath),
+        path: pdfPath,
+        contentType: "application/pdf",
+      },
+    ],
   });
 }
 
@@ -628,13 +599,17 @@ async function runOnce() {
     CONFIG.APP_SHEET,
     CONFIG.COMPANY_FILTER
   );
+  let month4 = month4FromLotto(CONFIG.CURR_FILE, CONFIG.MPERS_SHEET) || {
+    labels: [],
+    data: [],
+  };
 
-  // Lotto — last 4 calendar months from "now"
-  let month4 = month4FromLotto(CONFIG.CURR_FILE, CONFIG.MPERS_SHEET);
-  if (!month4) month4 = { labels: [], data: [] };
-
-  const cssText = fs.readFileSync(CONFIG.CSS_FILE, "utf-8");
-  const html = buildHtml({ compare, month4 }, cssText);
+  const cover = renderCover({
+    company: "МПЕРС ХХК",
+    periodText: `${compare.labels[0]} – ${compare.labels[1]}`,
+  });
+  const body = cover + renderLayout({ month4, compare });
+  const html = wrapHtml(body);
 
   const monday = dayjs().tz(CONFIG.TIMEZONE).startOf("week").add(1, "day");
   const pdfName = `ard-mpers-weekly-${monday.format("YYYYMMDD")}.pdf`;
@@ -673,8 +648,7 @@ function startScheduler() {
 }
 
 // Entry
-const runNow = process.argv.includes("--once");
-if (runNow) {
+if (process.argv.includes("--once")) {
   runOnce().catch((e) => {
     console.error(e);
     process.exit(1);

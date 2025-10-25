@@ -16,8 +16,8 @@ const CONFIG = {
   TOTALY_SHEET: "totaly",
   OST_SHEET: "Osticket1",
 
-  EXCEL_FILE_CURR: "./ARD 8.04-8.10.xlsx",
-  EXCEL_FILE_PREV: "./ARD 7.28-8.03.xlsx",
+  EXCEL_FILE_CURR: "./ARD 10.13-10.19.xlsx",
+  EXCEL_FILE_PREV: "./ARD 10.06-10.12.xlsx",
 
   COMPANIES: [
     "Ард Актив",

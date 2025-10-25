@@ -19,8 +19,9 @@ const CONFIG = {
   TIMEZONE: process.env.TIMEZONE || "Asia/Ulaanbaatar",
 
   // Excel files
-  CURR_FILE: "./ARD 8.04-8.10.xlsx",
-  PREV_FILE: "./ARD 7.28-8.03.xlsx",
+
+  CURR_FILE: "./ARD 10.13-10.19.xlsx",
+  PREV_FILE: "./ARD 10.06-10.12.xlsx",
   GOMDOL_FILE: "./gomdol-weekly.xlsx",
   // Sheets
   ASS_SHEET: "ASS",
@@ -34,8 +35,8 @@ const CONFIG = {
   CSS_FILE: "./css/template.css",
   SAVE_HTML: true,
   HTML_NAME_PREFIX: "report",
-  REPORT_TITLE: process.env.REPORT_TITLE || "Ард Апп — 7 хоногийн тайлан",
-  SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[ArdApp Weekly]",
+  REPORT_TITLE: process.env.REPORT_TITLE || "Ард Актив — 7 хоногийн тайлан",
+  SUBJECT_PREFIX: process.env.SUBJECT_PREFIX || "[ArdActive Weekly]",
   EMAIL_ENABLED: String(process.env.EMAIL_ENABLED ?? "true") === "true",
   SCHED_ENABLED: String(process.env.SCHED_ENABLED ?? "true") === "true",
 };
@@ -318,25 +319,7 @@ function renderWeeklyByCategory(weekly) {
     }};`;
 
   return `
-  <section class="card">
-    <div class="grid grid-2">
-      <div>
-        <div class="card-title">БҮРТГЭЛ /Ангиллаар/</div>
-        <canvas id="byCategory" style="margin:4rem 0; height: 500px;"></canvas>
-      </div>
-      <div>
-        <ul style="margin-top:34px;line-height:1.6">
-          <li>Сүүлчийн 7 хоногт нийт <b>${last.total.toLocaleString()}</b> (${pct(
-    last.lav / Math.max(1, last.total)
-  )} лавлагаа, ${pct(last.uil / Math.max(1, last.total))} үйлчилгээ, ${pct(
-    last.gom / Math.max(1, last.total)
-  )} гомдол).</li>
-          <li>Өмнөх 7 хоногоос ${delta >= 0 ? "өссөн" : "буурсан"}: <b>${pct(
-    Math.abs(delta)
-  )}</b>.</li>
-        </ul>
-      </div>
-    </div>
+
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>(function(){

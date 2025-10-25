@@ -1,0 +1,519 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>@page {
+  size: A4 landscape;
+  margin: 16mm 14mm;
+}
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #222;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.header {
+  margin-bottom: 12px;
+}
+h1 {
+  font-size: 18px;
+  margin: 0 0 6px 0;
+}
+h2 {
+  font-size: 16px;
+  margin: 20px 0 8px 0;
+  page-break-after: avoid;
+}
+.sheet {
+  break-inside: avoid;
+  margin-bottom: 12px;
+}
+.table-wrap {
+  overflow: auto;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+th {
+  background: #f7f7f7;
+  font-weight: 600;
+}
+.caption {
+  color: #666;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.footer {
+  margin-top: 16px;
+  color: #777;
+  font-size: 11px;
+}
+
+.grid.grid-2 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+}
+
+.card-title {
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ff6a6a, #ffa46a);
+}
+.legend {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: #999;
+}
+.dot-total {
+  background: #00e6b8;
+}
+.dot-ans {
+  background: #f7b733;
+}
+.dot-ivr {
+  background: #ff6b81;
+}
+.dot-line {
+  background: #3b82f6;
+  border-radius: 2px;
+  width: 18px;
+  height: 3px;
+  align-self: center;
+}
+table.cmp {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.cmp th,
+table.cmp td {
+  border: 1px solid #e5e5e5;
+  padding: 8px;
+}
+table.cmp thead th {
+  background: #ffe9e1;
+}
+td.up {
+  color: #0a8f3c;
+  font-weight: 600;
+}
+td.down {
+  color: #d14242;
+  font-weight: 600;
+}
+
+/* Section header */
+.kpi-note {
+  margin: 8px 2px 2px;
+  color: #444;
+}
+.kpi-note .up {
+  color: #0a8f3c;
+  font-weight: 600;
+}
+.kpi-note .down {
+  color: #d14242;
+  font-weight: 600;
+}
+
+/* Cards container */
+.channel-cards .card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 16px;
+}
+.mini-card {
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--grad);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+.mini-title {
+  display: inline-block;
+  color: #eef;
+  text-decoration: underline;
+  margin-bottom: 6px;
+}
+.mini-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.mini-sub {
+  font-size: 12px;
+  opacity: 0.95;
+  margin-top: 2px;
+}
+.mini-delta {
+  margin-top: 6px;
+  font-weight: 700;
+}
+.mini-delta.up {
+  color: #c8ffd1;
+}
+.mini-delta.down {
+  color: #ffd1d1;
+}
+
+/* Хэвлэхэд мөр таслахгүй байхаар */
+.channel-cards .mini-grid {
+  break-inside: avoid;
+}
+
+.ost .card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+} /* grid/картууд аль хэдийн байвал давхардахгүй */
+
+.fb-wrap {
+  margin-top: 18px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fb-head {
+  margin: 0;
+  padding: 8px 12px;
+  background: #1e40af;
+  color: #fff;
+}
+.fb-company {
+  padding: 10px 12px;
+  border: 1px solid #e5e5e5;
+  border-top: none;
+}
+.fb-company .fb-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.fb-company ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.fb-company li {
+  margin: 2px 0;
+}
+.fb-company .count {
+  color: #666;
+  font-size: 12px;
+}
+
+.ost-top .card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.card.soft {
+  padding: 12px;
+}
+.chart-wrap {
+  break-inside: avoid;
+}
+.cmp {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cmp th,
+.cmp td {
+  border: 1px solid #e5e5e5;
+  padding: 8px;
+  vertical-align: top;
+}
+.cmp thead th {
+  background: #ffe9e1;
+}
+.cmp .num {
+  text-align: right;
+}
+.up {
+  color: #0a8f3c;
+  font-weight: 600;
+}
+.down {
+  color: #d14242;
+  font-weight: 600;
+}
+
+.social .card-title {
+  background: linear-gradient(135deg, #ff6a6a, #ffa46a);
+  color: #fff;
+}
+
+.spacer16 {
+  height: 16px;
+}
+
+
+    .grid{display:grid;gap:16px}
+    .grid-2{grid-template-columns:1.2fr .8fr}
+    .grid-1-1{grid-template-columns:1fr 1fr}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;break-inside:avoid}
+    .card-title{font-weight:700;margin-bottom:8px}
+    table.cmp{width:100%;border-collapse:collapse;font-size:12.5px}
+    table.cmp th,table.cmp td{border:1px solid #e5e7eb;padding:6px 8px;vertical-align:top}
+    table.cmp thead th{background:#ffe5d5}
+    td.num{text-align:right;white-space:nowrap}
+    .spacer16{height:16px}
+    .footer{margin-top:24px;color:#6b7280;font-size:11px}
+    .up{color:#16a34a}.down{color:#ef4444}
+  </style>
+  
+  <title>Ard Weekly</title>
+</head>
+<body>
+  <section class="sheet">
+    <div style="background:linear-gradient(135deg,#ef4444,#f97316);border-radius:12px;padding:24px;display:flex;justify-content:space-between;align-items:center;min-height:150px;">
+      <div style="background:#fff;border-radius:12px;padding:16px 20px;display:inline-block">
+        <div style="font-weight:800;font-size:24px;letter-spacing:.5px;color:#ef4444">ARD</div>
+        <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
+      </div>
+      <div style="color:#fff;text-align:right;padding:8px 16px">
+        <div style="font-size:26px;font-weight:800;line-height:1.1">Ард Лизинг</div>
+        <div style="opacity:.9;margin-top:8px">10.06-10.12 → 10.13-10.19</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sheet">
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн 4 сараар/</div>
+        <div style="height:240px" class="chart-wrap"><canvas id="chartMonth"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн 4 долоо хоногоор/</div>
+        <div style="height:240px" class="chart-wrap"><canvas id="chartWeeks"></canvas></div>
+        <ul style="margin-top:8px">
+          <li>Тайлант 7 хоногт нийт <b>43</b> бүртгэл.</li>
+          <li>Өмнөх 7 хоногоос <b>өссөн</b>: <b>72%</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="sheet">
+    <div class="grid grid-1-1">
+      <div class="card"><div class="card-title">ЛАВЛАГАА</div><div style="height:140px"><canvas id="miniLav"></canvas></div></div>
+      <div class="card"><div class="card-title">ГОМДОЛ</div><div style="height:140px"><canvas id="miniGom"></canvas></div></div>
+    </div>
+  </section>
+
+  
+  <section class="sheet">
+    
+    <div class="card">
+      <div class="card-title">ТОП Лавлагаа</div>
+      <table class="cmp">
+        <thead><tr><th width="50%"></th><th>10.06-10.12</th><th>10.13-10.19</th><th>%</th></tr></thead>
+        <tbody>
+          <tr>
+                  <td>Төлбөрийн хуваарь</td>
+                  <td class="num">2</td>
+                  <td class="num">8</td>
+                  <td class="num up">▲ 300%</td>
+                </tr><tr>
+                  <td>Эдийн засагчтай холбогдох</td>
+                  <td class="num">7</td>
+                  <td class="num">7</td>
+                  <td class="num up">▲ 0%</td>
+                </tr><tr>
+                  <td>Өсдөг машины мэдээлэл өгсөн</td>
+                  <td class="num">12</td>
+                  <td class="num">4</td>
+                  <td class="num down">▼ 67%</td>
+                </tr><tr>
+                  <td>Өсдөг машин - Борлуулалтын урамшуулал</td>
+                  <td class="num">0</td>
+                  <td class="num">4</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>“Өсдөг машин” бүтээгдэхүүний эргэн төлөлт хийх (хугацаандаа төлсөн)</td>
+                  <td class="num">1</td>
+                  <td class="num">2</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Гадагшаа залгаж мэдээлэл хүргэсэн</td>
+                  <td class="num">2</td>
+                  <td class="num">1</td>
+                  <td class="num down">▼ 50%</td>
+                </tr><tr>
+                  <td>“Өсдөг Машин” хөтөлбөрийн гэрээ байгуулах</td>
+                  <td class="num">0</td>
+                  <td class="num">1</td>
+                  <td class="num up">▲ 100%</td>
+                </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="spacer16"></div>
+    
+    <div class="card">
+      <div class="card-title">ТОП Үйлчилгээ</div>
+      <table class="cmp">
+        <thead><tr><th width="50%"></th><th>10.06-10.12</th><th>10.13-10.19</th><th>%</th></tr></thead>
+        <tbody>
+          
+        </tbody>
+      </table>
+    </div>
+    <div class="spacer16"></div>
+    
+    <div class="card">
+      <div class="card-title">ТОП Гомдол</div>
+      <table class="cmp">
+        <thead><tr><th width="50%"></th><th>10.06-10.12</th><th>10.13-10.19</th><th>%</th></tr></thead>
+        <tbody>
+          <tr>
+                  <td>Өсдөг машины төлөлтөө хийгээд ардын эрх ороогүй</td>
+                  <td class="num">0</td>
+                  <td class="num">6</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Хөрөнгө оруулалт суллах хүсэлт хүргүүлсэн, мэдээлэл өгөөгүй</td>
+                  <td class="num">0</td>
+                  <td class="num">3</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Өсдөг машин гэрээ байгуулсаны RDX ороогүй</td>
+                  <td class="num">0</td>
+                  <td class="num">2</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Өсдөг машины төлөлт хийсэн ч өр үүссэн</td>
+                  <td class="num">1</td>
+                  <td class="num">1</td>
+                  <td class="num up">▲ 0%</td>
+                </tr><tr>
+                  <td>Хувьцаа байршаагүй</td>
+                  <td class="num">0</td>
+                  <td class="num">1</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Хувьцааны түгжээ тайлагдаагүй</td>
+                  <td class="num">0</td>
+                  <td class="num">1</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Алдаатай мессеж илгээгдсэн</td>
+                  <td class="num">0</td>
+                  <td class="num">1</td>
+                  <td class="num up">▲ 100%</td>
+                </tr><tr>
+                  <td>Ардкойн байршаагүй</td>
+                  <td class="num">0</td>
+                  <td class="num">1</td>
+                  <td class="num up">▲ 100%</td>
+                </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
+
+  <script>
+    
+    (function(){
+      function load(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+      async function ensure(){ if(window.Chart) return;
+        await load('https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js');
+      }
+      window.__makeCharts = async function(){
+        try{
+          await ensure();
+          
+    const dataLabel={id:'dataLabel',afterDatasetsDraw(ch){
+      const {ctx,data:{datasets},getDatasetMeta}=ch; ctx.save();
+      ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.textAlign='center';
+      datasets.forEach((ds,di)=>{ const meta=getDatasetMeta(di);
+        (ds.data||[]).forEach((v,i)=>{ const el=meta.data[i]; if(!el||v==null) return;
+          ctx.fillStyle='#111'; ctx.fillText(String(v), el.x, el.y-6); });
+      }); ctx.restore();
+    }};
+
+          // MONTHS line (ALS/ASS)
+          (function(){
+            const el=document.getElementById('chartMonth');
+            const labels=["9сар","10сар","11сар","12сар"];
+            const data=[0,0,330,214];
+            if(!el || labels.length===0 || data.length===0) return;
+            const ctx=el.getContext('2d');
+            new Chart(ctx,{type:'line',
+              data:{labels,datasets:[{label:'',data,tension:.3,pointRadius:4}]},
+              options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+            });
+          })();
+
+          // WEEKS bar (ALS 2-series or ASS 3-series)
+          (function(){
+            const el=document.getElementById('chartWeeks');
+            const labels=["10.06-10.12","10.13-10.19"];
+            const datasets=[{"name":"Гомдол","data":[1,16]},{"name":"Лавлагаа","data":[24,27]}];
+            if(!el || labels.length===0 || datasets.length===0) return;
+            const stacked = datasets.length !== 2 ? false : true; // ALS-д stacked, ASS-д free
+            const ctx=el.getContext('2d');
+            new Chart(ctx,{type:'bar',
+              data:{labels,datasets},
+              options:{responsive:true,maintainAspectRatio:false,animation:false,
+                plugins:{legend:{position:'bottom'}},
+                scales:{x:{stacked:stacked},y:{stacked:stacked,beginAtZero:true}}
+              }, plugins:[dataLabel]
+            });
+          })();
+
+          // mini bars (prev vs curr)
+          (function(){
+            const cats=["10.06-10.12","10.13-10.19"];
+            const mini=(id,vals)=>{
+              const el=document.getElementById(id);
+              if(!el || cats.length===0 || !Array.isArray(vals) || vals.length===0) return;
+              const ctx=el.getContext('2d');
+              new Chart(ctx,{type:'bar',
+                data:{labels:cats,datasets:[{label:'',data:vals}]},
+                options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}, plugins:[dataLabel]
+              });
+            };
+            mini('miniLav', [24,27]);
+            mini('miniGom', [1,16]);
+          })();
+
+          window.__chartsReady=true;
+        }catch(e){ console.error('[Chart]',e); window.__chartsReady=true; }
+      };
+    })();
+    document.addEventListener('DOMContentLoaded', ()=> window.__makeCharts && window.__makeCharts());
+  </script>
+</body>
+</html>
