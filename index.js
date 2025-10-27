@@ -40,7 +40,7 @@ const CONFIG = {
   GOMDOL_FORCE_WEEK_LABEL: "03.17-03.23",
   GOMDOL_FORCE_WEEK_COL: null,
 
-  COMPANY_WEEK_LABEL: "07.28-08.03",
+  COMPANY_WEEK_LABEL: "10.13-10.19",
 
   COMPANY_WEEK_PICK_LOWER: true,
   // Сонголттой: яг 2 баганын нэрийг зааж өгч болно (баруун талд байгаа хэлбэрээр)
@@ -51,7 +51,7 @@ const CONFIG = {
 };
 
 const {
-  EXCEL_FILE = "./ARD 8.04-8.10.xlsx",
+  EXCEL_FILE = "./ARD 10.13-10.19.xlsx",
   REPORT_TITLE = "7 хоногийн тайлан",
   TIMEZONE = "Asia/Ulaanbaatar",
   RECIPIENTS = "",
@@ -190,7 +190,6 @@ function renderTotalsCompareBlock(title, pair, labels, canvasId) {
       ${badge}
       <canvas id="${canvasId}" height="180"></canvas>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>
       (function(){
         const ctx = document.getElementById('${canvasId}').getContext('2d');
@@ -204,7 +203,8 @@ function renderTotalsCompareBlock(title, pair, labels, canvasId) {
             animation:false,
             plugins:{ legend:{display:false}, tooltip:{enabled:false} },
             scales:{ y:{ beginAtZero:true } }
-          }
+          },
+          plugins: [window.dataLabelsPlugin]
         });
       })();
     </script>
@@ -332,6 +332,51 @@ function extractTotalyKPI(wb, sheetName = CONFIG.TOTALY_SHEET) {
 }
 const fmt = (n) => Number(n || 0).toLocaleString("en-US");
 const pct = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
+function renderAssCover({ company, periodText }) {
+  const isArdSanhuu = company && company.trim() === "Ард Санхүүгийн Нэгдэл";
+
+  if (isArdSanhuu) {
+    return `
+    <section class="hero" style="margin-bottom:16px">
+      <div style="background:linear-gradient(135deg,#ef4444,#f97316);
+                  border-radius:12px;padding:28px;display:flex;
+                  justify-content:space-between;align-items:center;min-height:160px;">
+        <div style="background:#fff;border-radius:16px;padding:16px 20px;display:inline-block;
+                    box-shadow:0 4px 10px rgba(0,0,0,.1)">
+          <div style="font-weight:800;font-size:28px;letter-spacing:.5px;color:#ef4444">ARD</div>
+          <div style="color:#666;margin-top:4px;font-size:15px">Хүчтэй. Хамтдаа.</div>
+        </div>
+        <div style="color:#fff;text-align:right;padding:8px 16px">
+          <div style="font-size:32px;font-weight:800;line-height:1.1">Ард Санхүүгийн Нэгдэл</div>
+          <div style="opacity:.9;margin-top:6px;font-size:15px">${escapeHtml(
+            periodText || ""
+          )}</div>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  // Default generic cover
+  return `
+  <section class="hero" style="margin-bottom:16px">
+    <div style="background:linear-gradient(135deg,#ef4444,#f97316);
+                border-radius:12px;padding:28px;display:flex;
+                justify-content:space-between;align-items:center;min-height:160px;">
+      <div style="background:#fff;border-radius:16px;padding:16px 20px;display:inline-block">
+        <div style="font-weight:700;font-size:24px;letter-spacing:.5px;color:#ef4444">ARD</div>
+        <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
+      </div>
+      <div style="color:#fff;text-align:right;padding:8px 16px">
+        <div style="font-size:30px;font-weight:800;line-height:1.1">${escapeHtml(
+          company
+        )}</div>
+        <div style="opacity:.9;margin-top:6px">${escapeHtml(
+          periodText || ""
+        )}</div>
+      </div>
+    </div>
+  </section>`;
+}
 
 function makeSocialNarrative(soc, options = {}) {
   const safe = (n) => Math.max(0, Number(n) || 0);
@@ -423,7 +468,6 @@ function renderTotalyKPISection(kpi) {
   }
 
   const { data, deltas } = kpi;
-  // Chart.js-ийг CDN-ээс татаж ашиглана (Puppeteer PDF рүү render хийнэ)
   return `
   <section class="kpi">
     <div class="grid grid-2">
@@ -473,27 +517,27 @@ function renderTotalyKPISection(kpi) {
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>
       (function(){
         const ctx = document.getElementById('kpiChart').getContext('2d');
-        const chart = new Chart(ctx, {
+        new Chart(ctx, {
           type: 'bar',
           data: {
             labels: ${JSON.stringify(data.labels)},
             datasets: [
               { label:'Нийт дуудлага', data:${JSON.stringify(
                 data.total
-              )}, yAxisID:'yBar' },
+              )},   yAxisID:'yBar' },
               { label:'Амжилттай хариулсан тоо', data:${JSON.stringify(
                 data.answered
               )}, yAxisID:'yBar' },
               { label:'IVR-т хандсан', data:${JSON.stringify(
                 data.ivr
-              )}, yAxisID:'yBar' },
-              { label:'Амжилттай холбогдсон хувь', type:'line', data:${JSON.stringify(
-                data.success.map((v) => +(v * 100).toFixed(1))
-              )}, yAxisID:'yLine' }
+              )},     yAxisID:'yBar' },
+              { label:'Амжилттай холбогдсон хувь', type:'line',
+                data:${JSON.stringify(
+                  data.success.map((v) => +(v * 100).toFixed(1))
+                )}, yAxisID:'yLine' }
             ]
           },
           options: {
@@ -510,7 +554,8 @@ function renderTotalyKPISection(kpi) {
                 return lab.includes('хувь') ? lab+': '+v+'%' : lab+': '+v.toLocaleString();
               }}}
             }
-          }
+          },
+          plugins: [window.dataLabelsPlugin]
         });
       })();
     </script>
@@ -556,18 +601,16 @@ function getLastTwoDataCols(header) {
     if (idx1 >= 0 && idx0 >= 0) return { currCol: idx1, prevCol: idx0 };
   }
 
-  // 3) Толгойгоос “07.14-07.20”, “09/08 - 09/14”, “09.08 – 09.14” гэх мэт range-тай багануудыг барина
+  // 3) Толгойгоос range-тай багануудыг барина
   const weekLike = (s) => {
     const t = String(s || "")
       .replace(/\s+/g, " ")
       .trim();
-    // 07.14-07.20 | 07.14 - 07.20 | 09/08 - 09/14 | 2025.07.14 - 2025.07.20
     return /(\d{1,4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2})\s*[-–]\s*(\d{1,4}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2})/.test(
       t
     );
   };
 
-  // “Өөрчлөлт”, “Эзлэх хув(ь)” зэрэг туслах багануудыг алгас
   const ban = (s) => /өрчлөлт|эзлэх\s*хув/i.test(String(s || ""));
 
   const candidates = [];
@@ -582,7 +625,6 @@ function getLastTwoDataCols(header) {
     return { currCol: candidates[0], prevCol: candidates[1] }; // баруун→зүүн
   }
 
-  // 4) Ядаж баруун талын 2 хоосон биш баганыг авъя (fallback)
   const nonEmpty = [];
   for (let i = header.length - 1; i >= 0; i--) {
     const v = String(header[i] || "").trim();
@@ -679,7 +721,6 @@ function renderChannelCards(ch) {
   const arrow = (v) => (v >= 0 ? "▲" : "▼");
   const updownCls = (v) => (v >= 0 ? "up" : "down");
 
-  // Товч тайлбар (нэгдсэн)
   const totalVisitors =
     (ch.lavlah?.curr || 0) +
     (ch.social?.curr || 0) +
@@ -798,9 +839,21 @@ function renderOsticketTopBySubcatSection(top) {
 function renderTotalsAndTopSection(totals, top) {
   if (!totals || !top) return "";
 
-  const arrow = (v) => (v >= 0 ? "▲" : "▼");
-  const cls = (v) => (v >= 0 ? "up" : "down");
-  const pct = (v) => `${Math.abs(v * 100).toFixed(0)}%`;
+  const totalsBlock = `
+    <div class="stack">
+      ${renderTotalsCompareBlock(
+        "Лавлагаа",
+        totals.lavlagaa,
+        totals.labels,
+        "cmpLav"
+      )}
+      ${renderTotalsCompareBlock(
+        "Үйлчилгээ",
+        totals.uilchilgee,
+        totals.labels,
+        "cmpUil"
+      )}
+    </div>`;
 
   const makeTopTable = (rows, labels) => `
     <table class="cmp">
@@ -820,31 +873,15 @@ function renderTotalsAndTopSection(totals, top) {
             <td>${escapeHtml(r.name)}</td>
             <td class="num">${r.prev.toLocaleString()}</td>
             <td class="num">${r.curr.toLocaleString()}</td>
-            <td class="num ${cls(r.deltaPct)}">${arrow(r.deltaPct)} ${pct(
-              r.deltaPct
-            )}</td>
+            <td class="num ${r.deltaPct >= 0 ? "up" : "down"}">${
+              r.deltaPct >= 0 ? "▲" : "▼"
+            } ${Math.abs(r.deltaPct * 100).toFixed(0)}%</td>
           </tr>
         `
           )
           .join("")}
       </tbody>
     </table>`;
-
-  const totalsBlock = `
-    <div class="stack">
-      ${renderTotalsCompareBlock(
-        "Лавлагаа",
-        totals.lavlagaa,
-        totals.labels,
-        "cmpLav"
-      )}
-      ${renderTotalsCompareBlock(
-        "Үйлчилгээ",
-        totals.uilchilgee,
-        totals.labels,
-        "cmpUil"
-      )}
-    </div>`;
 
   const topBlock = `
     <div class="stack">
@@ -949,7 +986,6 @@ function findColIndexByWeekLabelFuzzy(rows, totalyLabel) {
   const target = parseWeekRange(totalyLabel);
   if (!target) return -1;
 
-  // sheet-ийн бүх “week-like” нүдийг цуглуулна
   const cands = new Map(); // col -> bestLabel
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -960,20 +996,18 @@ function findColIndexByWeekLabelFuzzy(rows, totalyLabel) {
   }
   if (!cands.size) return -1;
 
-  // яг таарах эсвэл төгсгөлийн өдөр ±1 хооронд хамгийн ойрыг сонгоно
   let bestCol = -1,
     bestScore = 1e9;
   for (const [col, raw] of cands.entries()) {
     const w = parseWeekRange(raw);
     const diffEnd = Math.abs(daysDiff(w.end, target.end));
     const diffStart = Math.abs(daysDiff(w.start, target.start));
-    const score = diffEnd * 2 + diffStart; // end-д илүү жин өгье
+    const score = diffEnd * 2 + diffStart;
     if (diffEnd <= 1 && score < bestScore) {
       bestScore = score;
       bestCol = col;
     }
   }
-  // хэрэв ±1-д багтсан олдсонгүй бол хамгийн баруун талын week-like баганыг авна
   if (bestCol < 0) {
     bestCol = Math.max(...Array.from(cands.keys()));
   }
@@ -1140,7 +1174,6 @@ function renderBotSections(bot) {
     const h = Math.max(220, cats.length * 28 + 40);
     return `
       <canvas id="${id}" height="${h}"></canvas>
-      <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
       <script>(function(){
         const ctx = document.getElementById('${id}').getContext('2d');
         new Chart(ctx, {
@@ -1157,7 +1190,8 @@ function renderBotSections(bot) {
             animation:false,
             scales:{ x:{ beginAtZero:true } },
             plugins:{ legend:{ position:'bottom' } }
-          }
+          },
+          plugins: [window.dataLabelsPlugin]
         });
       })();</script>`;
   };
@@ -1230,8 +1264,7 @@ function extractGomdolFromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
   const weekCols = findWeekCols(rows); // бүх 7 хоногийн баганууд
   const last4 = weekCols.slice(-4); // баруун талаас 4 долоо хоног
 
-  // (a) Нийт гомдол (сүүлийн 4 сар) — зүүн дээд талын "6сар, 7сар..." мөрүүдээс
-  // сарууд A баганад бичигддэг тул "сар" тексттэй мөрүүдийг баруун талын тоотой нь уншина
+  // (a) Саруудаас сүүлийн 4 сарын нийлбэр
   const monthRows = rows.filter(
     (r) => r && /^(\d+)\s*сар$/i.test(String(r[0] || "").trim())
   );
@@ -1239,10 +1272,10 @@ function extractGomdolFromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
     label: String(r[0]).trim(),
     value: parseNum(
       r[2] ?? r[1] ?? r.find((x, i) => i > 0 && String(x || "").trim() !== "")
-    ), // аль байгаа тоог авна
+    ),
   }));
 
-  // (b) Шийдвэрлэлтийн 7 хоног — "Шийдэгдсэн", "Шийдэгдээгүй" мөрүүдээс
+  // (b) 7 хоног шийдвэрлэлт
   const rSolved = findRowByName(rows, "Шийдэгдсэн") || [];
   const rUnsolved = findRowByName(rows, "Шийдэгдээгүй") || [];
   const byWeek = last4.map((c) => ({
@@ -1251,12 +1284,11 @@ function extractGomdolFromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
     unsolved: parseNum(rUnsolved[c]),
   }));
 
-  // (c) ТОП 5 гомдол — доод талын “ТОП гомдол” хэсгийн хамгийн сүүлийн 7 хоногийн багана
-  // Anchor: "ТОП гомдол" гэсэн нүдийг олж түүнээс доошхи мөрүүдийг уншина
+  // (c) ТОП 5 (хамгийн сүүлийн 7 хоног)
   const anchorRowIdx = rows.findIndex((r) => r && norm(r[0]) === "топ гомдол");
   let top5 = [];
   if (anchorRowIdx >= 0) {
-    const topArea = rows.slice(anchorRowIdx + 1, anchorRowIdx + 50); // дараагийн 50 мөр
+    const topArea = rows.slice(anchorRowIdx + 1, anchorRowIdx + 50);
     const lastWeekCol = last4.slice(-1)[0] ?? weekCols.slice(-1)[0];
     const pairs = [];
     for (const r of topArea) {
@@ -1269,9 +1301,7 @@ function extractGomdolFromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
     top5 = pairs.slice(0, 5);
   }
 
-  // (d) "Хугацаа хэтэрсэн гомдол" — комп-д баруун талд байдаг жагсаалтыг week колоноос уншина
-  // Anchor-ууд: "системээс шалгалтсан", "харилцагчаас шалгалтсан", "зээл татгалзсан" гэх мэт
-  // Тэдгээр нь нэг хүснэгтэд дарааллаа хадгалдаг → хоосон мөр хүртэл уншина
+  // (d) Хугацаа хэтэрсэн жагсаалт (TOP-10)
   const overdueAnchors = [
     "Системээс шалгалтсан",
     "Харилцагчаас шалгалтсан",
@@ -1281,9 +1311,8 @@ function extractGomdolFromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
     "Иргэний үнэмлэхний баталгаажуулалт хийхгүй",
     "Нэвтэрч болохгүй",
     "Зээл татгалзсан",
-    "Мөнгө шилжээгүй", // жишээ
+    "Мөнгө шилжээгүй",
   ];
-  // Overdue хүснэгтийн дээд гарчгийг барихын тулд эдгээрийн аль нэг байрлаж буй хэсгийг хайна
   let overdueStart = rows.findIndex(
     (r) => r && r.some((v) => overdueAnchors.some((a) => norm(v) === norm(a)))
   );
@@ -1320,9 +1349,6 @@ function renderGomdolSection(data) {
   const unsolved = data.byWeek.map((x) => x.unsolved);
 
   // (c) ТОП 5
-  const topVals = data.top5.map((x) => x.value);
-
-  // (d) Хугацаа хэтэрсэн
   const ovVals = data.overdue.map((x) => x.value);
   const ovSum = ovVals.reduce((a, b) => a + b, 0);
 
@@ -1362,7 +1388,6 @@ function renderGomdolSection(data) {
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>
     (function(){
       // Months line
@@ -1371,17 +1396,19 @@ function renderGomdolSection(data) {
         data:{ labels:${JSON.stringify(
           months
         )}, datasets:[{ label:'Нийт гомдол', data:${JSON.stringify(mVals)} }]},
-        options:{ animation:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } }
+        options:{ animation:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } },
+        plugins: [window.dataLabelsPlugin]
       });
 
       // Weekly stacked
       new Chart(document.getElementById('gmWeekly').getContext('2d'),{
         type:'bar',
         data:{ labels:${JSON.stringify(wLabels)}, datasets:[
-          { label:'Шийдэгдсэн', data:${JSON.stringify(solved)} },
+          { label:'Шийдэгдсэн',  data:${JSON.stringify(solved)} },
           { label:'Шийдэгдээгүй', data:${JSON.stringify(unsolved)} }
         ]},
-        options:{ animation:false, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } }, plugins:{ legend:{ position:'bottom' } } }
+        options:{ animation:false, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } }, plugins:{ legend:{ position:'bottom' } } },
+        plugins: [window.dataLabelsPlugin]
       });
     })();
     </script>
@@ -1401,7 +1428,6 @@ function parseWeekRangeForSort(s) {
   if (!m) return null;
   const y = m[6] ? Number(m[6]) : m[3] ? Number(m[3]) : 2000;
   const pad = (n) => String(n).padStart(2, "0");
-  // sort хийхэд ашиглах YYYY-MM-DD (range-ийн ТӨГСГӨЛ) -> илүү сүүлчийн долоо хоногийг сонгоно
   return `${y}-${pad(m[5])}-${pad(m[4])}`;
 }
 // Sheet2 → зүүн талын пивот (A:B) : Row Labels | Count of ...
@@ -1411,7 +1437,6 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
 
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
 
-  // Helpers
   const isPct = (v) =>
     typeof v === "string" && /^\s*-?\d+(?:\.\d+)?\s*%$/.test(v.trim());
   const toPct01 = (v) =>
@@ -1425,7 +1450,6 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
       String(s || "")
     );
 
-  // 1) "ТОП гомдол" anchor мөр
   const anchorR = rows.findIndex(
     (r) => r && r.some((v) => /ТОП\s*гомдол/i.test(String(v || "")))
   );
@@ -1435,28 +1459,19 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
   }
   const anchorRow = rows[anchorR] || [];
 
-  // 2) Сонгох 7 хоногийн COUNT баганын (currCol) индексийг олно
   let currCol = null;
 
   if (typeof CONFIG.GOMDOL_FORCE_WEEK_COL === "number") {
     currCol = CONFIG.GOMDOL_FORCE_WEEK_COL;
-    console.log(
-      "[TOP5] Using forced week COL:",
-      currCol,
-      "label=",
-      anchorRow[currCol]
-    );
   } else if (CONFIG.GOMDOL_FORCE_WEEK_LABEL) {
     const want = String(CONFIG.GOMDOL_FORCE_WEEK_LABEL).trim();
     const idx = anchorRow.findIndex((v) => String(v || "").trim() === want);
     if (idx >= 0) {
       currCol = idx;
-      console.log("[TOP5] Using forced week LABEL:", want, "→ col:", currCol);
     }
   }
 
   if (currCol == null) {
-    // автоматаар: anchor мөрөн дэх бүх week-like толгой
     const cand = [];
     for (let c = 0; c < anchorRow.length; c++)
       if (weekLike(anchorRow[c])) cand.push(c);
@@ -1464,38 +1479,27 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
       console.warn("[TOP5] No week-like columns in anchor row");
       return [];
     }
-    currCol = cand[cand.length - 1]; // хамгийн баруунд буйг сүүлийн 7 хоног гэж үзнэ
-    console.log(
-      "[TOP5] Auto week col =",
-      currCol,
-      "label=",
-      anchorRow[currCol]
-    );
+    currCol = cand[cand.length - 1];
   }
 
-  // 3) currCol орчимд (зүүн тийш 3, баруун тийш 4) “Нэр|Тоо|%” гурвалыг мөр бүрээс түүж авна
-  const W_LEFT = 3; // name ихэвчлэн currCol-1 эсвэл -2 талд байдаг
-  const W_RIGHT = 4; // тоо=currCol, % баруун талд 1–2 багана
+  const W_LEFT = 3;
+  const W_RIGHT = 4;
   const items = [];
 
   for (let r = anchorR + 1; r < rows.length; r++) {
     const row = rows[r] || [];
-    // бүхэл мөр хоосон бол блок дууслаа
     if (!row.some((v) => String(v ?? "").trim())) break;
 
-    // 3.1 нэрийг currCol-1 .. currCol-3 дотроос хамгийн ойрыг сонгоно
     let name = "";
     for (let c = currCol - 1; c >= Math.max(0, currCol - W_LEFT); c--) {
       const s = String(row[c] ?? "").trim();
       if (!s) continue;
-      // тоо/хувь/долоо хоногийн шошго биш, “цэвэр текст” байвал нэр гэж үзнэ
       if (!/^-?\d+(\.\d+)?$/.test(s) && !isPct(s) && !weekLike(s)) {
         name = s;
         break;
       }
     }
 
-    // 3.2 тоо = currCol эсвэл баруун тийш ойрын integer
     let count = toInt(row[currCol]);
     if (!count) {
       for (let c = currCol + 1; c <= currCol + W_RIGHT; c++) {
@@ -1508,7 +1512,6 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
       }
     }
 
-    // 3.3 хувь = currCol+1 .. currCol+W_RIGHT дотроос эхний %
     let pct = 0;
     for (let c = currCol + 1; c <= currCol + W_RIGHT; c++) {
       const v = row[c];
@@ -1518,50 +1521,24 @@ function extractTop5FromComp(wb, sheetName = CONFIG.GOMDOL_SHEET) {
       }
     }
 
-    // 3.4 Хүчинтэй мөрийг хадгална
     if (name && count > 0) {
       items.push({ name, value: count, pct });
     }
   }
 
-  // 4) TOP-5 буцаана
   items.sort((a, b) => b.value - a.value);
   return items.slice(0, 5);
 }
 function renderTop5Chart(top5) {
   const labels = top5.map((x) => x.name);
   const counts = top5.map((x) => x.value);
-  const pcts = top5.map((x) => x.pct ?? 0);
 
-  // Өндрийг мөрийн тооноос автоматаар
   const h = Math.max(220, labels.length * 30 + 40);
-
-  // % текстийг барын ард бичих жижиг plugin
-  const plugin = `
-    const pctLabel = {
-      id: 'pctLabel',
-      afterDatasetsDraw(chart){
-        const {ctx, scales:{x,y}} = chart;
-        ctx.save();
-        ctx.font = '12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
-        ctx.fillStyle = '#333';
-        ${JSON.stringify(counts)}.forEach((v,i)=>{
-          const xPos = x.getPixelForValue(v) + 8;
-          const yPos = y.getPixelForValue(i);
-          const pct  = (${JSON.stringify(pcts)}[i] || 0) * 100;
-          ctx.fillText(pct.toFixed(0) + '%', xPos, yPos + 4);
-        });
-        ctx.restore();
-      }
-    };
-  `;
 
   return `
     <canvas id="gmTop5" height="${h}"></canvas>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>
       (function () {
-        ${plugin}
         const ctx = document.getElementById('gmTop5').getContext('2d');
         new Chart(ctx, {
           type: 'bar',
@@ -1575,12 +1552,14 @@ function renderTop5Chart(top5) {
             plugins: { legend: { display: false } },
             scales: { x: { beginAtZero: true } }
           },
-          plugins: [pctLabel]
+          // зөвхөн тоо бичдэг ерөнхий dataLabelsPlugin л үлдэнэ
+          plugins: [window.dataLabelsPlugin]
         });
       })();
     </script>
   `;
 }
+
 function renderTop5Card(top5) {
   if (!top5 || !top5.length) {
     return `<div class="card"><div class="card-title">ТОП 5 гомдол</div>
@@ -1606,7 +1585,6 @@ function extractOverdueFromSheet2(wb, sheetName = "Sheet2") {
 
   let best = { col: -1, start: -1, items: [] };
 
-  // бүх багануудаар гүйлгээд "Нэр | Тоо | %" 3-тын хэв загварыг хайна
   const maxCols = rows.reduce((m, r) => Math.max(m, r?.length || 0), 0);
   for (let c = 0; c <= maxCols - 3; c++) {
     let items = [];
@@ -1621,7 +1599,6 @@ function extractOverdueFromSheet2(wb, sheetName = "Sheet2") {
       const cntOk = isNum(cnt);
       const pctOk = isPct(pct);
 
-      // эхлэх нөхцөл: гурвуулаа хэвийн
       if (!started) {
         if (nameOk && cntOk && pctOk) {
           started = true;
@@ -1630,13 +1607,11 @@ function extractOverdueFromSheet2(wb, sheetName = "Sheet2") {
         continue;
       }
 
-      // үргэлжлэх: нэр хоосон бол энэ блок дууссан гэж үзнэ
       if (!name) break;
 
       if (nameOk && cntOk) {
         items.push({ name, value: num(cnt) });
       } else {
-        // эвдэрсэн мөр таарвал блок дууслаа
         break;
       }
     }
@@ -1646,7 +1621,6 @@ function extractOverdueFromSheet2(wb, sheetName = "Sheet2") {
     }
   }
 
-  // 0-с биш тоонуудыг үлдээгээд TOP-10
   return (best.items || []).filter((x) => x.value > 0).slice(0, 10);
 }
 // gomdol end
@@ -1657,7 +1631,6 @@ function extractOsticketResolutionBlock(wb, sheetName = CONFIG.OST_SHEET) {
   if (!ws) throw new Error(`Sheet not found: ${sheetName}`);
   const rows = xlsx.utils.sheet_to_json(ws, { header: 1, raw: false });
 
-  // дэмжих нэршлүүд (үл ялиг бичгийн алдааг бас барина)
   const KEY = {
     total: /нийт\s*хаагдсан/i,
     most: /мост\s*кол+|мост\s*кал+/i,
@@ -1675,23 +1648,20 @@ function extractOsticketResolutionBlock(wb, sheetName = CONFIG.OST_SHEET) {
   const toPct01 = (v) =>
     isPct(v) ? Number(String(v).replace("%", "")) / 100 : 0;
 
-  // мөр бүрээс: нэршил таарвал → баруун талд орших эхний тоо (count) ба эхний % (pct)-ийг авна
   const pickRow = (re) => {
     for (const r of rows) {
       if (!r) continue;
-      // мөрт байгаа бүх нүднүүдээр нэршил хайна
       if (!r.some((v) => re.test(String(v || "")))) continue;
 
       let count = 0,
         pct = 0;
-      // баруун тийшхи эхний тоо ба эхний %-ийг цуглуулъя
+
       for (let i = 0; i < r.length; i++) {
         const v = r[i];
         if (!count && toInt(v)) count = toInt(v);
         if (!pct && isPct(v)) pct = toPct01(v);
         if (count && pct) break;
       }
-      // тоо байхгүй ч өөр мөр дээр (дараагийн 1-2 мөр) багана шилжилт байж магадгүй — нэмж хайна
       if (!count || !pct) {
         const idx = rows.indexOf(r);
         for (let k = 1; k <= 2 && idx + k < rows.length; k++) {
@@ -1715,7 +1685,6 @@ function extractOsticketResolutionBlock(wb, sheetName = CONFIG.OST_SHEET) {
   const gomdolAj = pickRow(KEY.gomdolAj).count;
   let busad = pickRow(KEY.busad).count;
 
-  // Хэрэв "Бусад" байхгүй бол нийтээс тооцоолж гаргая
   if (!busad && total) {
     busad = Math.max(total - (uz + gomdolAj), 0);
   }
@@ -1771,7 +1740,6 @@ function renderOsticketResolutionCard(data) {
 // gomdol shiidverlelt duusna
 
 //gomdol company
-// --- Comp sheet: ЯГ заасан 7 хоногийн баганаас утгыг шууд унших ---
 function extractCompanyTotalsLatestWeek(wb, sheetName = "Comp") {
   const ws = wb.Sheets[sheetName];
   if (!ws) throw new Error(`Sheet not found: ${sheetName}`);
@@ -1794,7 +1762,6 @@ function extractCompanyTotalsLatestWeek(wb, sheetName = "Comp") {
     return Number.isFinite(n) ? n : 0;
   };
 
-  // 1) WEEK шошготой баганыг олно (нэгээс олон бол хамгийн доорх блоктой дүйхээр нь → хамгийн доод мөр дээрхийг сонгоё)
   const candidates = [];
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -1806,16 +1773,13 @@ function extractCompanyTotalsLatestWeek(wb, sheetName = "Comp") {
     console.warn("[Company] Week label not found:", WEEK);
     return WANT.map((n) => ({ name: n, value: 0, pct: 0 }));
   }
-  // ихэнх файлуудад дээш/доош 2 удаа давтагддаг → доод талынх нь компанийн жагсаалттай ойр
   const { r: weekHdrRow, c: weekCol } = candidates[candidates.length - 1];
 
-  // 2) Компанийн нэртэй мөрийг олж weekCol дээрх утгыг авна
-  const bag = new Map(); // name -> value
+  const bag = new Map();
   const wantSet = new Map(WANT.map((n) => [norm(n), n]));
 
   for (let r = weekHdrRow + 1; r < rows.length; r++) {
     const row = rows[r] || [];
-    // нэрийг NAME_COL-оос; хэрэв хоосон бол зүүн 0..3 багана дундаас хайна
     let rawName = row[NAME_COL];
     if (!rawName) {
       for (let k = 0; k < Math.min(4, row.length); k++) {
@@ -1828,7 +1792,6 @@ function extractCompanyTotalsLatestWeek(wb, sheetName = "Comp") {
     const canon = wantSet.get(norm(rawName));
     if (!canon) continue;
 
-    // яг тэр баганын тоо (заримдаа 1-2 нүд баруун тийш гажсан байж болзошгүй → ойрынд нь fallback)
     let val = toInt(row[weekCol]);
     if (!val && row.length > weekCol + 1) val = toInt(row[weekCol + 1]);
     if (!val && row.length > weekCol + 2) val = toInt(row[weekCol + 2]);
@@ -1836,12 +1799,8 @@ function extractCompanyTotalsLatestWeek(wb, sheetName = "Comp") {
     bag.set(canon, val);
   }
 
-  // 3) Дарааллаар буцаах (байхгүй нь 0)
   const out = WANT.map((n) => ({ name: n, value: bag.get(n) ?? 0, pct: 0 }));
   out.sort((a, b) => (order.get(a.name) ?? 999) - (order.get(b.name) ?? 999));
-  console.log(
-    `[Company] Using week "${WEEK}" at col=${weekCol}, headerRow=${weekHdrRow}`
-  );
   return out;
 }
 
@@ -1865,6 +1824,7 @@ function renderComplaintsByCompanySection(items) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         // count badge
         chart.data.datasets[0].data.forEach((v,i)=>{
+          if (!v) return;
           const xPos = x.getPixelForValue(i);
           const yPos = y.getPixelForValue(v) - 10;
           const text = String(v);
@@ -1876,6 +1836,7 @@ function renderComplaintsByCompanySection(items) {
         // pct badge (байвал)
         if (${hasPct}) {
           chart.data.datasets[1].data.forEach((v,i)=>{
+            if (!v) return;
             const xPos = x.getPixelForValue(i);
             const yPos = y1.getPixelForValue(v);
             const text = v + '%';
@@ -1896,7 +1857,7 @@ function renderComplaintsByCompanySection(items) {
       <div class="card-title">ГОМДОЛ /Компанийн/ — ${
         CONFIG.COMPANY_WEEK_LABEL || "Сүүлийн 7 хоног"
       }</div>
-      <canvas id="cmpCompany" height="360"></canvas>
+      <canvas id="cmpCompany" height="280"></canvas>
       <div class="legend" style="margin-top:8px">
         <span class="dot dot-total"></span> Бүртгэсэн гомдол
         ${
@@ -1907,7 +1868,6 @@ function renderComplaintsByCompanySection(items) {
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>
       (function(){
         ${plugin}
@@ -1940,7 +1900,7 @@ function renderComplaintsByCompanySection(items) {
             },
             plugins:{ legend:{ display:false } }
           },
-          plugins:[badge]
+          plugins:[badge]  // энд өөрийн тууз plugin хангалттай (давхар тоо гарахаас сэргийлж dataLabelsPlugin-ийг оруулаагүй)
         });
       })();
     </script>
@@ -1956,11 +1916,11 @@ async function htmlToPdf(html, outPath) {
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    await page.emulateMediaType("screen"); // сонголттой
+    await page.emulateMediaType("screen");
     await page.pdf({
       path: outPath,
-      format: "A4", // ← size биш format
-      landscape: true, // ← хөндлөн
+      format: "A4",
+      landscape: true,
       printBackground: true,
       preferCSSPageSize: true,
       margin: { top: "16mm", right: "14mm", bottom: "16mm", left: "14mm" },
@@ -1974,42 +1934,32 @@ const EMAIL_ENABLED = String(process.env.EMAIL_ENABLED ?? "true") === "true";
 const SCHED_ENABLED = String(process.env.SCHED_ENABLED ?? "true") === "true";
 
 async function sendEmailWithPdf(pdfPath, subject) {
-  // 465 бол secure=true; бусад нь STARTTLS (secure=false)
   if (!EMAIL_ENABLED) {
     console.log("[EMAIL] Disabled by EMAIL_ENABLED=false. Skipping send.");
-    return; // ← мэйл илгээхгүй
+    return;
   }
 
   const port = Number(process.env.SMTP_PORT || 587);
-  const secure =
-    port === 465 ? true : String(process.env.SMTP_SECURE || "false") === "true";
 
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: Number(SMTP_PORT || 587),
-    secure: String(SMTP_SECURE || "false") === "true", // 465:true, 587:false
+    secure: String(SMTP_SECURE || "false") === "true",
     auth:
       SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-    // ↓ Сүлжээ талын асуудлыг оношлох/давтахад туслана
     pool: true,
     maxConnections: 1,
-    connectionTimeout: 20_000, // 20s
+    connectionTimeout: 20_000,
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
-    requireTLS: SMTP_PORT === "587", // STARTTLS шаардана (шаардлагатай бол)
-    tls: {
-      // Зарим enterprise SMTP зөвхөн TLS1.2+ шаарддаг
-      minVersion: "TLSv1.2",
-      // Хуучин/self-signed сертификаттай бол түр хугацаанд:
-      // rejectUnauthorized: false
-    },
-    logger: true, // консолд протоколын лог гаргана
+    requireTLS: SMTP_PORT === "587",
+    tls: { minVersion: "TLSv1.2" },
+    logger: true,
     debug: true,
   });
 
-  // Эхлээд конфиг зөв эсэхийг шалгаж үзнэ
   try {
-    await transporter.verify(); // handshake test
+    await transporter.verify();
     console.log("[SMTP] verify OK");
   } catch (e) {
     console.error("[SMTP] verify FAILED:", e);
@@ -2041,12 +1991,75 @@ async function sendEmailWithPdf(pdfPath, subject) {
 
 function wrapHtml(bodyHtml) {
   const css = fs.readFileSync(CSS_FILE, "utf-8");
+
+  // Chart.js + DataLabels plugin-ийг HEAD дээр нэг удаа ачаалъя
+  const dataLabelsPlugin = `
+  (function(){
+    if (window.dataLabelsPlugin) return;
+    window.dataLabelsPlugin = {
+      id: 'dataLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        ctx.save();
+        ctx.font = 'bold 11px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        (chart.data.datasets || []).forEach((dataset, di) => {
+          const meta = chart.getDatasetMeta(di);
+          if (!meta || meta.hidden || !meta.data) return;
+
+          meta.data.forEach((element, i) => {
+            const val = dataset.data?.[i];
+            if (val == null || val === 0) return;
+
+            const pos = element.tooltipPosition ? element.tooltipPosition() : element;
+            const x = pos.x ?? 0;
+            const y = pos.y ?? 0;
+
+            // Line dataset → хувь гэж үзээд % тэмдэглэгээтэй
+            // Line dataset эсэх
+          const isLine = dataset.type === 'line' || chart.config.type === 'line';
+
+          // Зөвхөн "хувь" гэж тэмдэглэсэн эсвэл баруун тэнхлэг 0-100% үед л % нэмнэ
+          const isPercent =
+            /%|хувь/i.test(dataset.label || '') ||
+            (chart.config?.options?.scales?.y1?.max === 100 && dataset.yAxisID === 'y1');
+
+        if (isLine) {
+  const text = typeof val === 'number'
+    ? (Number.isInteger(val) ? val : val.toFixed(1)) + '%'
+    : String(val);
+           ctx.fillStyle = '#000'; // ← улааныг хар болголоо
+  ctx.fillText(text, x, y - 8);
+} else {
+            const text = typeof val === 'number' ? val.toLocaleString() : String(val);
+            ctx.fillStyle = '#333';
+            if (chart.config?.options?.indexAxis === 'y') {
+              ctx.textAlign = 'left';
+              ctx.fillText(text, x + 6, y + 4);
+            } else {
+              ctx.textAlign = 'center';
+              ctx.fillText(text, x, y - 6);
+            }
+          }
+
+          });
+        });
+
+        ctx.restore();
+      }
+    };
+  })();`;
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>${css}</style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script>${dataLabelsPlugin}</script>
 </head>
 <body>
   ${bodyHtml}
@@ -2059,95 +2072,97 @@ function wrapHtml(bodyHtml) {
 // Гол ажил: Excel → HTML → PDF → Mail
 // ────────────────────────────────────────────────────────────────
 async function runOnce() {
-  if (!fs.existsSync(CONFIG.EXCEL_FILE_CURR))
-    throw new Error(`EXCEL_FILE_CURR not found: ${CONFIG.EXCEL_FILE_CURR}`);
-  if (!fs.existsSync(CONFIG.EXCEL_FILE_PREV))
-    throw new Error(`EXCEL_FILE_PREV not found: ${CONFIG.EXCEL_FILE_PREV}`);
-  if (!fs.existsSync(CSS_FILE))
-    throw new Error(`CSS template not found: ${CSS_FILE}`);
-  if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  // 0) Файл шалгах
+  [
+    CONFIG.CURR_FILE,
+    CONFIG.PREV_FILE,
+    CONFIG.CSS_FILE,
+    CONFIG.GOMDOL_FILE,
+  ].forEach((p) => {
+    if (!fs.existsSync(p)) throw new Error(`Missing file: ${p}`);
+  });
+  if (!fs.existsSync(CONFIG.OUT_DIR))
+    fs.mkdirSync(CONFIG.OUT_DIR, { recursive: true });
 
-  const wbPrev = xlsx.readFile(CONFIG.EXCEL_FILE_PREV, { cellDates: true });
-  const wbCurr = xlsx.readFile(CONFIG.EXCEL_FILE_CURR, { cellDates: true });
+  // 1) Workbook унших
+  const wbCurr = xlsx.readFile(CONFIG.CURR_FILE, { cellDates: true });
+  const wbPrev = xlsx.readFile(CONFIG.PREV_FILE, { cellDates: true });
 
-  const channels = extractChannelsFromTotaly(wbCurr);
-  const kpi = extractTotalyKPI(wbCurr);
+  // 2) ASS өгөгдөл (cover-д хэрэгтэй хугацааг эндээс авна)
+  const weekly = extractWeeklyByCategoryFromASS(wbCurr, {
+    sheetName: "ASS",
+    takeLast: 4,
+  });
 
-  const totals = extractOsticketTotalsFromTwoBooks(wbPrev, wbCurr);
-  const ostTop = extractOsticketTopBySubcatFromTwoBooks(wbPrev, wbCurr);
-  const social = extractSocialStatsFromTwoBooks(wbPrev, wbCurr);
+  const ass = extractAssCompanyLatestMonths(wbCurr, {
+    sheetName: CONFIG.ASS_SHEET,
+    company: CONFIG.ASS_COMPANY,
+    yearLabel: CONFIG.ASS_YEAR,
+    takeLast: CONFIG.ASS_TAKE_LAST_N_MONTHS,
+  });
 
-  const bot = extractBotBlocksFromTwoBooks(wbPrev, wbCurr);
+  // 3) Компани TOP10 (жишээ)
+  const topAA = extractOstTop10ForCompany(wbPrev, wbCurr, {
+    sheetName: CONFIG.OST_SHEET,
+    company: "Ард Актив",
+  });
 
-  const wbG = xlsx.readFile(CONFIG.GOMDOL_FILE, { cellDates: true });
-  const core = extractGomdolFromComp(wbG); // сар + 7 хоног шийдвэрлэлт
-  const top5 = extractTop5FromComp(wbG, "Comp");
-  const overdue = extractOverdueFromSheet2(wbG);
-  const gomdol = {
-    last4Months: core.last4Months,
-    byWeek: core.byWeek,
-    top5,
-    overdue,
-  };
+  // 4) Cover — компанийн нэр, хугацаа
+  const periodStart = ass?.points?.[0]?.label ?? "";
+  const periodEnd = ass?.points?.[ass.points.length - 1]?.label ?? "";
+  const yearText = ass?.year ?? CONFIG.ASS_YEAR ?? "";
+  const periodText =
+    [periodStart, periodEnd].filter(Boolean).join(" – ") +
+    (yearText ? ` (${yearText})` : "");
 
-  const ostRes = extractOsticketResolutionBlock(wbCurr, CONFIG.OST_SHEET);
-  const ostHtml = renderOsticketResolutionCard(ostRes);
+  const cover = renderAssCover({
+    company: CONFIG.ASS_COMPANY || "Ард Санхүүгийн Нэгдэл",
+    periodText,
+  });
 
-  const compByCompany = extractCompanyTotalsLatestWeek(wbG, "Comp");
-  const compCompanyHtml = renderComplaintsByCompanySection(compByCompany);
+  // 5) ASS сарын график карт
+  const assChart = renderAssMonthlyLineCard(ass);
 
-  let socialHtml = `
-  <section class="social">
-    <div class="card">
-      <div class="card-title">Сошиал сувагийн үзүүлэлт</div>
-      ${makeSocialNarrative(social, { chatDup: 126, chatSucc: 63 })}
-      ${
-        /* энд Social хүснэгтээ renderSocialSection(social)-ийн table хэсгийг тавина */ ""
-      }
-    </div>
-  </section>
-`;
-
-  // const social = extractSocialStats(wbCurr);
-
-  // 3) Нүүр хуудасны KPI блок
+  // 6) HTML sections — COVER-г ЭХЛЭЭД тавина
   let body = "";
-  body += renderTotalyKPISection(kpi);
-  body += renderChannelCards(channels);
-  body += renderTotalsAndTopSection(totals, ostTop);
-  body += renderSocialSection(social);
-  body += socialHtml;
-  body += ostHtml;
-  body += renderBotSections(bot);
-  body += renderGomdolSection(gomdol);
-  body += compCompanyHtml;
+  body += cover; // ⬅️ эхний нүүр
+  body += assChart;
+  body += renderWeeklyByCategory(weekly);
+  body += renderCompanyTop10Section(topAA);
 
-  // (хүсвэл бусад sheet-үүдийн хүснэгтийг доор нэмж болно)
-  // body += buildHtmlFromWorkbook(wb); // хүсвэл бүх sheet-үүдийг дагаад нэм
-
-  // 4) Финал HTML
+  // 7) HTML → PDF
   const html = wrapHtml(body);
 
-  // 5) PDF болгож илгээх
-  const monday = dayjs().tz(TIMEZONE).startOf("week").add(1, "day");
+  const monday = dayjs().tz(CONFIG.TIMEZONE).startOf("week").add(1, "day");
   const stamp = monday.format("YYYYMMDD");
-  const pdfName = `weekly-report-${stamp}.pdf`;
-  const pdfPath = path.join(OUTPUT_DIR, pdfName);
+  const pdfName = `ard-aktiv-${stamp}.pdf`;
+  const pdfPath = path.join(CONFIG.OUT_DIR, pdfName);
 
   await htmlToPdf(html, pdfPath);
 
-  const subject = `${SUBJECT_PREFIX} ${REPORT_TITLE} — ${monday.format(
-    "YYYY-MM-DD"
-  )}`;
+  // 8) Хэрэв HTML хадгалах горим нээгдсэн бол
+  if (CONFIG.SAVE_HTML) {
+    const htmlPath = path.join(
+      CONFIG.OUT_DIR,
+      `${CONFIG.HTML_NAME_PREFIX}-${stamp}.html`
+    );
+    fs.writeFileSync(htmlPath, html, "utf8");
+    console.log(`[OK] HTML saved → ${htmlPath}`);
+  }
+
+  // 9) Email илгээх
+  const subject = `${CONFIG.SUBJECT_PREFIX} ${
+    CONFIG.REPORT_TITLE
+  } — ${monday.format("YYYY-MM-DD")}`;
   await sendEmailWithPdf(pdfPath, subject);
 
-  console.log(`[OK] Sent ${pdfName} to ${RECIPIENTS}`);
+  console.log(`[OK] Sent ${pdfName} → ${process.env.RECIPIENTS}`);
 }
+
 // ────────────────────────────────────────────────────────────────
 // Scheduler: Даваа бүр 09:00 (Asia/Ulaanbaatar)
 // ────────────────────────────────────────────────────────────────
 function startScheduler() {
-  // “0 9 * * 1” → 09:00 every Monday
   cron.schedule(
     "0 9 * * 1",
     async () => {

@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <style>
-    @page {
+  <style>@page {
   size: A4 landscape;
   margin: 16mm 14mm;
 }
@@ -278,251 +277,234 @@ td.down {
   height: 16px;
 }
 
-    /* A4 landscape дотор багтах дээд өргөн */
-    .container { max-width: 1080px; margin: 0 auto; }
-    .card { padding: 16px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.05); }
-    .card-title { font-weight: 700; margin-bottom: 8px; }
-    .cmp { width: 100%; border-collapse: collapse; }
-    .cmp th, .cmp td { padding: 8px 10px; border-bottom: 1px solid #eee; }
-    .cmp .num { text-align: right; }
-    .cmp .up{color:#16a34a}.cmp .down{color:#ef4444}
-    /* тогтвортой өндөртэй canvas — responsive үед ч хоосон болохгүй */
-/* ... бусад стил ... */
-#arbLine  { width:100% !important; height:320px !important; } /* өмнөхөөс бага */
-#arbWeeks { width:100% !important; height:260px !important; } /* ↓ багасгалаа */
-/* ... */
-
-    @media print { .card { break-inside: avoid; page-break-inside: avoid; } }
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:12px;page-break-inside:avoid}
+    .card-title{font-weight:700;margin-bottom:6px}
+    table.cmp{table-layout:fixed;width:100%;border-collapse:collapse;font-size:12.5px}
+    table.cmp th,table.cmp td{border:1px solid #e5e7eb;padding:6px 8px;vertical-align:top}
+    table.cmp thead th{background:#ffe5d5}
+    td.num{text-align:right;white-space:nowrap}
+    .up{color:#16a34a}.down{color:#ef4444}
   </style>
-
-  <!-- Глобал плагин: тоонуудыг давхцахгүй байршуулна -->
-  <script>
-    window.dataLabelPlus = {
-      id: 'dataLabelPlus',
-      afterDatasetsDraw(chart){
-        const {ctx, data, scales, config} = chart;
-        const yScale = scales?.y, labels = data?.labels||[], sets = data?.datasets||[];
-        ctx.save();
-        ctx.font='bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
-        ctx.textAlign='center'; ctx.lineWidth=3;
-        ctx.strokeStyle='rgba(255,255,255,.96)'; ctx.fillStyle='#111';
-        const isBar = config.type==='bar';
-        const isStacked = !!(chart.options?.scales?.x?.stacked && chart.options?.scales?.y?.stacked);
-
-        // dataset labels
-        sets.forEach((ds,di)=>{
-          const meta=chart.getDatasetMeta(di);
-          (ds.data||[]).forEach((v,i)=>{
-            if(v==null) return;
-            const el = meta.data?.[i]; if(!el) return;
-            if(isBar){ const h=Math.abs((el.base??el.y)-el.y); if(h<18) return; }
-            const pos = el.tooltipPosition?el.tooltipPosition():el;
-            const x=pos.x, y=isBar? (el.y+(el.base??el.y))/2 : (pos.y-6);
-            const t = Number(v).toLocaleString('mn-MN');
-            ctx.strokeText(t,x,y); ctx.fillText(t,x,y);
-          });
-        });
-
-        // totals (stacked bar)
-        if(isBar && isStacked && yScale && typeof yScale.getPixelForValue==='function'){
-          const totals = labels.map((_,i)=>sets.reduce((s,ds)=>s+(+ds.data?.[i]||0),0));
-          const metas = sets.map((_,di)=>chart.getDatasetMeta(di));
-          totals.forEach((tot,i)=>{
-            const base = metas[0]?.data?.[i]; if(!base) return;
-            const x=(base.tooltipPosition?base.tooltipPosition():base).x;
-            const yTop=yScale.getPixelForValue(tot);
-            let minY=Infinity;
-            metas.forEach(m=>{
-              const el=m.data?.[i]; if(!el) return;
-              const h=Math.abs((el.base??el.y)-el.y);
-              if(h>=18){ const yc=(el.y+(el.base??el.y))/2; minY=Math.min(minY,yc); }
-            });
-            let y=yTop-10; if(y>(minY-12)) y=minY-12;
-            const t=Number(tot).toLocaleString('mn-MN');
-            ctx.strokeText(t,x,y); ctx.fillText(t,x,y);
-          });
-        }
-        ctx.restore();
-      }
-    };
-
-    // PDF-д хэвлэхээс өмнө chart дууссаныг шалгах тоолуур
-    window.__chartsReadyCount = 0;
-    window._incReady = function(){ window.__chartsReadyCount++; if(window.__chartsReadyCount>=2) window.__chartsReady=true; };
-  </script>
 </head>
 <body>
-  <div class="container py-3">
-    
+ <div class="container py-3">
+    <div class="row g-3">
+      
   <section class="hero" style="margin-bottom:16px">
-    <div style="background:linear-gradient(135deg,#ef4444,#f97316);border-radius:12px;padding:24px;display:flex;justify-content:space-between;align-items:center;min-height:160px;">
-      <div style="background:#fff;border-radius:14px;padding:16px 20px;display:inline-block">
-        <div style="font-weight:800;font-size:24px;letter-spacing:.5px;color:#ef4444">ARD</div>
+    <div style="background:linear-gradient(135deg,#ef4444,#f97316);
+                border-radius:12px;padding:28px;display:flex;
+                justify-content:space-between;align-items:center;min-height:220px;">
+      <div style="background:#fff;border-radius:16px;padding:20px 24px;display:inline-block">
+        <div style="font-weight:700;font-size:28px;letter-spacing:.5px;color:#ef4444">ARD</div>
         <div style="color:#666;margin-top:4px">Хүчтэй. Хамтдаа.</div>
       </div>
-      <div style="color:#fff;text-align:right;padding:6px 12px">
-        <div style="font-size:30px;font-weight:800;line-height:1.1">Ард Бит</div>
-        <div style="opacity:.9;margin-top:6px">10.06-10.12 → 10.13-10.19</div>
+      <div style="color:#fff;text-align:right;padding:8px 16px">
+        <div style="font-size:36px;font-weight:800;line-height:1.1">АРД ЛИЗИНГ</div>
+        <div style="opacity:.9;margin-top:8px">09.22-09.28 – 10.13-10.19</div>
       </div>
     </div>
   </section>
-  <section>
+<section>
+  <div class="grid">
     
-    <div class="card" style="margin-bottom:12px">
-      <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн 4 сараар/</div>
-      <canvas id="arbLine"></canvas>
-    </div>
-    <script>(function(){
-      try{
-        const ctx=document.getElementById('arbLine').getContext('2d');
-        new Chart(ctx,{
-          type:'line',
-          data:{ labels:["7 сар (2025)","8 сар (2025)","9 сар (2025)","10 сар (2025)"],
-                 datasets:[{label:'', data:[668,726,796,507], tension:.3, pointRadius:4 }] },
-          options:{ animation:false, responsive:true, maintainAspectRatio:false,
-                    plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} },
-          plugins:[window.dataLabelPlus||{}]
-        });
-      }catch(e){ console.error('arbLine error', e); }
-      _incReady();
-    })();</script>
+  <div class="card" style="height: 500px; margin-bottom: 4rem;">
+    <div class="card-title">НИЙТ ХАНДАЛТ /Сүүлийн 4 сараар/</div>
+    <canvas id="alsLine"></canvas>
+  </div>
+  <script>(function(){
     
-    <div class="card">
-      <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн 2 долоо хоногоор/</div>
-      <canvas id="arbWeeks"></canvas>
-    </div>
-    <script>(function(){
-      try{
-        const ctx=document.getElementById('arbWeeks').getContext('2d');
-        new Chart(ctx,{
-          type:'bar',
-          data:{ labels:["10.06-10.12","10.13-10.19"], datasets:[
-            {label:'Лавлагаа',  data:[175,161]},
-            {label:'Үйлчилгээ', data:[2,3]},
-            {label:'Гомдол',    data:[3,22]}
-          ]},
-          options:{ animation:false, responsive:true, maintainAspectRatio:false,
-                    plugins:{legend:{position:'bottom'}},
-                    scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true} } },
-          plugins:[window.dataLabelPlus||{}]
+    function drawValues(chart){
+      const {ctx} = chart;
+      ctx.save();
+      ctx.font = '12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+      ctx.fillStyle = '#111';
+      ctx.textAlign = 'center';
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        (ds.data || []).forEach((v, i) => {
+          if (v == null) return;
+          const el = meta.data[i];
+          if (!el) return;
+          const pos = el.tooltipPosition ? el.tooltipPosition() : {x: el.x, y: el.y};
+          ctx.fillText(String(v), pos.x, pos.y - 6);
         });
-      }catch(e){ console.error('arbWeeks error', e); }
-      _incReady();
-    })();</script>
-    <div class="grid" style="margin-top:12px">
-      
-    <div class="card">
-      <div class="card-title">ТОП Лавлагаа</div>
-      <table class="cmp">
-        <thead><tr><th></th><th>10.06-10.12</th><th>10.13-10.19</th><th>%</th></tr></thead>
-        <tbody>
-          
-            <tr><td>АрдКойны үлдэгдэл шалгах</td>
-                <td class="num">77</td>
-                <td class="num">58</td>
-                <td class="num down">▼ 25%</td></tr>
-            <tr><td>АрдКойн ашиглах заавар</td>
-                <td class="num">34</td>
-                <td class="num">48</td>
-                <td class="num up">▲ 41%</td></tr>
-            <tr><td>RDX урамшуулал шалгах заавар</td>
-                <td class="num">13</td>
-                <td class="num">10</td>
-                <td class="num down">▼ 23%</td></tr>
-            <tr><td>Данс цуцлах заавар</td>
-                <td class="num">9</td>
-                <td class="num">8</td>
-                <td class="num down">▼ 11%</td></tr>
-            <tr><td>Урамшууллын АрдКойн орох заавар</td>
-                <td class="num">7</td>
-                <td class="num">8</td>
-                <td class="num up">▲ 14%</td></tr>
-            <tr><td>Ерөнхий мэдээлэл өгсөн</td>
-                <td class="num">4</td>
-                <td class="num">7</td>
-                <td class="num up">▲ 75%</td></tr>
-            <tr><td>Урамшууллын АрдКойны блок</td>
-                <td class="num">9</td>
-                <td class="num">6</td>
-                <td class="num down">▼ 33%</td></tr>
-            <tr><td>АрдКойн авах заавар</td>
-                <td class="num">3</td>
-                <td class="num">4</td>
-                <td class="num up">▲ 33%</td></tr>
-            <tr><td>Ард Апп хооронд АрдКойны шилжүүлэг хийх заавар</td>
-                <td class="num">6</td>
-                <td class="num">3</td>
-                <td class="num down">▼ 50%</td></tr>
-            <tr><td>АрдКойн шатаалт</td>
-                <td class="num">5</td>
-                <td class="num">3</td>
-                <td class="num down">▼ 40%</td></tr>
-        </tbody>
-      </table>
+      });
+      ctx.restore();
+    }
+  
+    const ctx = document.getElementById('alsLine').getContext('2d');
+    const ch  = new Chart(ctx, {
+      type: 'line',
+      data: { labels: ["7 сар","8 сар","9 сар","10 сар"],
+              datasets: [{ label:'', data: [66,57,67,82], tension:.3, pointRadius:4 }] },
+      options: { animation:false, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true} } }
+    });
+    setTimeout(() => drawValues(ch), 0);
+  })();</script>
+    
+  <div class="card">
+    <div class="card-title">НИЙТ БҮРТГЭЛ /Сүүлийн 4 долоо хоног/</div>
+    <div class="grid">
+      <canvas id="weekly"></canvas>
+      <ul style="margin:10px 0 0 18px;line-height:1.6">
+        <li>Тайлант 7 хоногт нийт <b>3,918</b>.</li>
+        <li>Өмнөх 7 хоногоос <b>буурсан</b>: <b>9%</b>.</li>
+      </ul>
     </div>
-      
-    <div class="card">
-      <div class="card-title">ТОП Үйлчилгээ</div>
-      <table class="cmp">
-        <thead><tr><th></th><th>10.06-10.12</th><th>10.13-10.19</th><th>%</th></tr></thead>
-        <tbody>
-          
-            <tr><td>HODL цуцлах заавар</td>
-                <td class="num">2</td>
-                <td class="num">3</td>
-                <td class="num up">▲ 50%</td></tr>
-        </tbody>
-      </table>
+  </div>
+  <script>(function(){
+    
+    function drawValues(chart){
+      const {ctx} = chart;
+      ctx.save();
+      ctx.font = '12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+      ctx.fillStyle = '#111';
+      ctx.textAlign = 'center';
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        (ds.data || []).forEach((v, i) => {
+          if (v == null) return;
+          const el = meta.data[i];
+          if (!el) return;
+          const pos = el.tooltipPosition ? el.tooltipPosition() : {x: el.x, y: el.y};
+          ctx.fillText(String(v), pos.x, pos.y - 6);
+        });
+      });
+      ctx.restore();
+    }
+  
+    const ctx = document.getElementById('weekly').getContext('2d');
+    const ch  = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: ["09.22-09.28","09.29-10.05","10.06-10.12","10.13-10.19"],
+              datasets: [
+                { label:'Лавлагаа', data: [3487,3169,3954,3536] },
+                { label:'Гомдол',   data: [428,345,359,382] }
+              ] },
+      options: { animation:false, plugins:{legend:{position:'bottom'}}, scales:{ y:{beginAtZero:true} } }
+    });
+    setTimeout(() => drawValues(ch), 0);
+  })();</script>
+  </div>
+  <div class="grid grid-1" style="margin-top:8px">
+    
+  <div class="card">
+    <div class="card-title">ТОП Лавлагаа</div>
+    <table class="cmp">
+      <thead>
+        <tr><th>Туслах ангилал</th><th>Өмнөх 7 хоног</th><th>Одоогийн 7 хоног</th><th>Өөрчлөлт</th></tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>Эдийн засагчтай холбогдох</td>
+            <td class="num">7</td>
+            <td class="num">8</td>
+            <td class="num up">▲ 14%</td>
+          </tr>
+          <tr>
+            <td>Төлбөрийн хуваарь</td>
+            <td class="num">2</td>
+            <td class="num">8</td>
+            <td class="num up">▲ 300%</td>
+          </tr>
+          <tr>
+            <td>Өсдөг машин - Борлуулалтын урамшуулал</td>
+            <td class="num">0</td>
+            <td class="num">5</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Өсдөг машины мэдээлэл өгсөн</td>
+            <td class="num">12</td>
+            <td class="num">4</td>
+            <td class="num down">▼ 67%</td>
+          </tr>
+          <tr>
+            <td>“Өсдөг машин” бүтээгдэхүүний эргэн төлөлт хийх (хугацаандаа төлсөн)</td>
+            <td class="num">1</td>
+            <td class="num">2</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Гадагшаа залгаж мэдээлэл хүргэсэн</td>
+            <td class="num">2</td>
+            <td class="num">1</td>
+            <td class="num down">▼ 50%</td>
+          </tr>
+          <tr>
+            <td>“Өсдөг Машин” хөтөлбөрийн гэрээ байгуулах</td>
+            <td class="num">0</td>
+            <td class="num">1</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+      </tbody>
+    </table>
+  </div>
+    
+  <div class="card">
+    <div class="card-title">ТОП Гомдол</div>
+    <table class="cmp">
+      <thead>
+        <tr><th>Туслах ангилал</th><th>Өмнөх 7 хоног</th><th>Одоогийн 7 хоног</th><th>Өөрчлөлт</th></tr>
+      </thead>
+      <tbody>
+        
+          <tr>
+            <td>Өсдөг машины төлөлтөө хийгээд ардын эрх ороогүй</td>
+            <td class="num">0</td>
+            <td class="num">6</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Хөрөнгө оруулалт суллах хүсэлт хүргүүлсэн, мэдээлэл өгөөгүй</td>
+            <td class="num">0</td>
+            <td class="num">3</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Өсдөг машин гэрээ байгуулсаны RDX ороогүй</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Ардкойн байршаагүй</td>
+            <td class="num">2</td>
+            <td class="num">1</td>
+            <td class="num down">▼ 50%</td>
+          </tr>
+          <tr>
+            <td>Өсдөг машины төлөлт хийсэн ч өр үүссэн</td>
+            <td class="num">1</td>
+            <td class="num">1</td>
+            <td class="num up">▲ 0%</td>
+          </tr>
+          <tr>
+            <td>Хувьцаа байршаагүй</td>
+            <td class="num">0</td>
+            <td class="num">1</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Хувьцааны түгжээ тайлагдаагүй</td>
+            <td class="num">0</td>
+            <td class="num">1</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+          <tr>
+            <td>Алдаатай мессеж илгээгдсэн</td>
+            <td class="num">0</td>
+            <td class="num">1</td>
+            <td class="num up">▲ 100%</td>
+          </tr>
+      </tbody>
+    </table>
+  </div>
+  </div>
+</section>
+      <div class="footer">Автоматаар бэлтгэсэн тайлан (Node.js)</div>
     </div>
-      
-    <div class="card">
-      <div class="card-title">ТОП Гомдол</div>
-      <table class="cmp">
-        <thead><tr><th></th><th>10.06-10.12</th><th>10.13-10.19</th><th>%</th></tr></thead>
-        <tbody>
-          
-            <tr><td>Залилангийн шинжтэй үйлдэл</td>
-                <td class="num">0</td>
-                <td class="num">6</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>АрдКойны үлдэгдэл харагдахгүй</td>
-                <td class="num">0</td>
-                <td class="num">4</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>Данс цуцлагдаагүй</td>
-                <td class="num">2</td>
-                <td class="num">3</td>
-                <td class="num up">▲ 50%</td></tr>
-            <tr><td>Авдар апп-д шилжүүлсэн орлого ороогүй</td>
-                <td class="num">0</td>
-                <td class="num">3</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>RDX лимит шинэчлэгдээгүй</td>
-                <td class="num">0</td>
-                <td class="num">2</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>Дансанд байсан Койн шатаагдсан</td>
-                <td class="num">0</td>
-                <td class="num">2</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>Койны данснаас зарлага гарахгүй алдаа заасан</td>
-                <td class="num">0</td>
-                <td class="num">1</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>Урамшууллын АрдКойн ороогүй</td>
-                <td class="num">0</td>
-                <td class="num">1</td>
-                <td class="num up">▲ 100%</td></tr>
-            <tr><td>Форвард</td>
-                <td class="num">1</td>
-                <td class="num">0</td>
-                <td class="num down">▼ 100%</td></tr>
-        </tbody>
-      </table>
-    </div>
-    </div>
-  </section>
-    <div class="footer" style="color:#888;font-size:12px;margin-top:8px">Автоматаар бэлтгэсэн тайлан (Ard Bit)</div>
   </div>
 </body>
 </html>
